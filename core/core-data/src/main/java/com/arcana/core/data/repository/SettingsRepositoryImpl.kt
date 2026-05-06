@@ -54,7 +54,9 @@ class SettingsRepositoryImpl @Inject constructor(
                 .getOrDefault(AiBackendType.RULE_BASED),
             claudeApiKey = prefs[Keys.CLAUDE_KEY] ?: "",
             localModelInstalled = prefs[Keys.LOCAL_MODEL_INSTALLED] ?: false,
-            localModelId = prefs[Keys.LOCAL_MODEL] ?: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+            // Default points at the smaller Qwen so first-run installs are fast.
+            // Manifest IDs live in service-ai's ModelManifest.kt.
+            localModelId = prefs[Keys.LOCAL_MODEL] ?: "qwen2.5-0.5b-instruct-q4_k_m",
             claudeModelId = prefs[Keys.CLAUDE_MODEL] ?: "claude-sonnet-4-5",
             interpretPromptShown = prefs[Keys.INTERPRET_PROMPT_SHOWN] ?: false,
         )
@@ -89,6 +91,10 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setLocalModelInstalled(installed: Boolean) {
         context.settingsDataStore.edit { it[Keys.LOCAL_MODEL_INSTALLED] = installed }
+    }
+
+    override suspend fun setLocalModelId(id: String) {
+        context.settingsDataStore.edit { it[Keys.LOCAL_MODEL] = id }
     }
 
     override suspend fun setInterpretPromptShown(shown: Boolean) {

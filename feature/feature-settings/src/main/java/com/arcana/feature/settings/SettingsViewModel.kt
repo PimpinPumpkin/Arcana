@@ -25,7 +25,8 @@ data class SettingsUiState(
     val themes: List<ThemePreset> = emptyList(),
     val decks: List<DeckArt> = emptyList(),
     val apiKeyDraft: String = "",
-    val localModel: ModelManifest = ModelManifest.DEFAULT,
+    val availableModels: List<ModelManifest> = ModelManifest.ALL,
+    val activeModel: ModelManifest = ModelManifest.DEFAULT,
     val installState: ModelInstaller.State = ModelInstaller.State.NotInstalled,
 )
 
@@ -38,15 +39,17 @@ class SettingsViewModel @Inject constructor(
     val state: StateFlow<SettingsUiState> = combine(
         settingsRepository.appearance,
         settingsRepository.ai,
+        modelInstaller.manifest,
         modelInstaller.state,
-    ) { appearance, ai, installState ->
+    ) { appearance, ai, activeModel, installState ->
         SettingsUiState(
             appearance = appearance,
             ai = ai,
             themes = settingsRepository.getAvailableThemes(),
             decks = settingsRepository.getAvailableDecks(),
             apiKeyDraft = ai.claudeApiKey,
-            localModel = modelInstaller.manifest,
+            availableModels = ModelManifest.ALL,
+            activeModel = activeModel,
             installState = installState,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
@@ -57,6 +60,10 @@ class SettingsViewModel @Inject constructor(
     fun setDeck(id: String) = viewModelScope.launch { settingsRepository.setDeckArtId(id) }
     fun setBackend(type: AiBackendType) = viewModelScope.launch { settingsRepository.setAiBackend(type) }
     fun saveApiKey(key: String) = viewModelScope.launch { settingsRepository.setClaudeApiKey(key.trim()) }
+
+    fun selectLocalModel(id: String) = viewModelScope.launch {
+        settingsRepository.setLocalModelId(id)
+    }
 
     fun installLocalModel() = modelInstaller.install()
     fun cancelLocalInstall() = modelInstaller.cancel()
