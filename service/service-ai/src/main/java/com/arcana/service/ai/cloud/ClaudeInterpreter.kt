@@ -47,7 +47,7 @@ class ClaudeInterpreter @Inject constructor(
             emit(InterpretationChunk.Error("Add your Anthropic API key in Settings to use Claude."))
             return@flow
         }
-        emit(InterpretationChunk.Status("Asking Claude…"))
+        emit(InterpretationChunk.Status("Interpreting…"))
 
         val body = ClaudeMessagesRequest(
             model = ai.claudeModelId.ifBlank { DEFAULT_MODEL },
