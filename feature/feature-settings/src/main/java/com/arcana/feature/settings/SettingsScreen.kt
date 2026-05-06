@@ -152,16 +152,15 @@ fun SettingsScreen(
                 )
             }
             items(state.availableModels, key = { it.id }) { model ->
-                ModelPickerRow(
+                val isActive = state.activeModel.id == model.id
+                ModelCard(
                     manifest = model,
-                    selected = state.activeModel.id == model.id,
+                    selected = isActive,
+                    // Install controls are only inlined on the selected card
+                    // — no point showing them on alternates the user hasn't
+                    // picked yet.
+                    installState = state.installState.takeIf { isActive },
                     onSelect = { viewModel.selectLocalModel(model.id) },
-                )
-            }
-            item {
-                LocalModelManager(
-                    manifest = state.activeModel,
-                    state = state.installState,
                     onInstall = viewModel::installLocalModel,
                     onCancel = viewModel::cancelLocalInstall,
                     onRemove = viewModel::uninstallLocalModel,
@@ -354,11 +353,20 @@ private fun BackendRow(
     }
 }
 
+/**
+ * One card per available local model. When selected, expands to show install
+ * status + progress bar + Install/Cancel/Remove/Retry. Non-selected cards stay
+ * compact (header only) — picking one is a single tap on the card or radio.
+ */
 @Composable
-private fun ModelPickerRow(
+private fun ModelCard(
     manifest: ModelManifest,
     selected: Boolean,
+    installState: ModelInstaller.State?,
     onSelect: () -> Unit,
+    onInstall: () -> Unit,
+    onCancel: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     Card(
         onClick = onSelect,
@@ -367,125 +375,86 @@ private fun ModelPickerRow(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "${manifest.displayName} · ${formatBytes(manifest.expectedBytes)}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    manifest.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            RadioButton(selected = selected, onClick = onSelect)
-        }
-    }
-}
-
-@Composable
-private fun LocalModelManager(
-    manifest: ModelManifest,
-    state: ModelInstaller.State,
-    onInstall: () -> Unit,
-    onCancel: () -> Unit,
-    onRemove: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(
-                manifest.displayName,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                manifest.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-
-            val statusText = when (state) {
-                is ModelInstaller.State.NotInstalled -> stringResource(
-                    R.string.settings_local_status_not_installed,
-                    manifest.displayName,
-                    formatBytes(manifest.expectedBytes),
-                )
-                is ModelInstaller.State.Downloading -> stringResource(
-                    R.string.settings_local_status_downloading,
-                    (state.progress * 100).toInt().coerceIn(0, 100),
-                    formatBytes(state.bytesDone),
-                    formatBytes(state.totalBytes),
-                )
-                is ModelInstaller.State.Installed -> stringResource(
-                    R.string.settings_local_status_installed,
-                    formatBytes(state.sizeBytes),
-                )
-                is ModelInstaller.State.Failed -> stringResource(
-                    R.string.settings_local_status_failed,
-                    state.message,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${manifest.displayName} · ${formatBytes(manifest.expectedBytes)}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        manifest.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                RadioButton(selected = selected, onClick = onSelect)
             }
-            Text(
-                text = statusText,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 10.dp),
-            )
 
-            if (state is ModelInstaller.State.Downloading) {
-                LinearProgressIndicator(
-                    progress = { state.progress.coerceIn(0f, 1f) },
+            if (selected && installState != null) {
+                val statusText = when (installState) {
+                    is ModelInstaller.State.NotInstalled -> stringResource(
+                        R.string.settings_local_status_not_installed,
+                        manifest.displayName,
+                        formatBytes(manifest.expectedBytes),
+                    )
+                    is ModelInstaller.State.Downloading -> stringResource(
+                        R.string.settings_local_status_downloading,
+                        (installState.progress * 100).toInt().coerceIn(0, 100),
+                        formatBytes(installState.bytesDone),
+                        formatBytes(installState.totalBytes),
+                    )
+                    is ModelInstaller.State.Installed -> stringResource(
+                        R.string.settings_local_status_installed,
+                        formatBytes(installState.sizeBytes),
+                    )
+                    is ModelInstaller.State.Failed -> stringResource(
+                        R.string.settings_local_status_failed,
+                        installState.message,
+                    )
+                }
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+
+                if (installState is ModelInstaller.State.Downloading) {
+                    LinearProgressIndicator(
+                        progress = { installState.progress.coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    )
+                }
+
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                when (state) {
-                    is ModelInstaller.State.NotInstalled -> {
-                        Button(
-                            onClick = onInstall,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(R.string.settings_local_install))
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    when (installState) {
+                        is ModelInstaller.State.NotInstalled -> {
+                            Button(onClick = onInstall, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.settings_local_install))
+                            }
                         }
-                    }
-                    is ModelInstaller.State.Downloading -> {
-                        OutlinedButton(
-                            onClick = onCancel,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(R.string.settings_local_cancel))
+                        is ModelInstaller.State.Downloading -> {
+                            OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.settings_local_cancel))
+                            }
                         }
-                    }
-                    is ModelInstaller.State.Installed -> {
-                        OutlinedButton(
-                            onClick = onRemove,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(R.string.settings_local_remove))
+                        is ModelInstaller.State.Installed -> {
+                            OutlinedButton(onClick = onRemove, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.settings_local_remove))
+                            }
                         }
-                    }
-                    is ModelInstaller.State.Failed -> {
-                        Button(
-                            onClick = onInstall,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(R.string.settings_local_retry))
+                        is ModelInstaller.State.Failed -> {
+                            Button(onClick = onInstall, modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.settings_local_retry))
+                            }
                         }
                     }
                 }
