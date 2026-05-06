@@ -25,4 +25,8 @@ object DatabaseModule {
 
     @Provides
     fun provideReadingDao(database: ArcanaDatabase): ReadingDao = database.readingDao()
+
+    @Provides
+    fun provideCustomSpreadDao(database: ArcanaDatabase): com.arcana.core.database.dao.CustomSpreadDao =
+        database.customSpreadDao()
 }

@@ -10,6 +10,15 @@ interface SettingsRepository {
     val appearance: Flow<AppearanceSettings>
     val ai: Flow<AiSettings>
 
+    /**
+     * User-defined spread order as a list of IDs. Empty until the user
+     * reorders for the first time. Spreads not present here use default
+     * ordering (bundled first, then custom by createdAt) appended after.
+     */
+    val spreadOrder: Flow<List<String>>
+
+    suspend fun setSpreadOrder(ids: List<String>)
+
     suspend fun getAvailableThemes(): List<ThemePreset>
     suspend fun getAvailableDecks(): List<DeckArt>
 

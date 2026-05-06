@@ -36,6 +36,10 @@ class SettingsRepositoryImpl @Inject constructor(
         val LOCAL_MODEL = stringPreferencesKey("local_model_id")
         val LOCAL_MODEL_INSTALLED = booleanPreferencesKey("local_model_installed")
         val INTERPRET_PROMPT_SHOWN = booleanPreferencesKey("interpret_prompt_shown")
+        // User-defined spread order, comma-separated IDs. Spread IDs don't
+        // contain commas (slugified names + UUIDs); empty string means "no
+        // user override, fall back to default ordering."
+        val SPREAD_ORDER = stringPreferencesKey("spread_order")
     }
 
     override val appearance: Flow<AppearanceSettings> = context.settingsDataStore.data.map { prefs ->
@@ -60,6 +64,15 @@ class SettingsRepositoryImpl @Inject constructor(
             claudeModelId = prefs[Keys.CLAUDE_MODEL] ?: "claude-sonnet-4-5",
             interpretPromptShown = prefs[Keys.INTERPRET_PROMPT_SHOWN] ?: false,
         )
+    }
+
+    override val spreadOrder: Flow<List<String>> = context.settingsDataStore.data.map { prefs ->
+        val raw = prefs[Keys.SPREAD_ORDER]?.takeIf { it.isNotBlank() } ?: return@map emptyList()
+        raw.split(',').filter { it.isNotBlank() }
+    }
+
+    override suspend fun setSpreadOrder(ids: List<String>) {
+        context.settingsDataStore.edit { it[Keys.SPREAD_ORDER] = ids.joinToString(",") }
     }
 
     override suspend fun getAvailableThemes(): List<ThemePreset> = ThemePresets.ALL
