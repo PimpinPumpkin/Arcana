@@ -10,16 +10,27 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -33,9 +44,18 @@ import com.arcana.core.domain.model.Spread
 @Composable
 fun SpreadPickerScreen(
     onPickSpread: (spreadId: String) -> Unit,
+    /**
+     * Optional. When null, the "Create custom spread" entry and the
+     * edit/delete affordances on user-authored spreads are hidden.
+     * Use null in contexts like the log-physical picker where customization
+     * is out of scope.
+     */
+    onCreateCustom: (() -> Unit)? = null,
+    onEditCustom: ((spreadId: String) -> Unit)? = null,
     viewModel: SpreadPickerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var spreadPendingDelete by remember { mutableStateOf<Spread?>(null) }
 
     Scaffold(
         topBar = {
@@ -68,32 +88,122 @@ fun SpreadPickerScreen(
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
+            if (onCreateCustom != null) {
+                item {
+                    CreateCustomCard(onClick = onCreateCustom)
+                }
+            }
             items(state.spreads, key = { it.id }) { spread ->
-                SpreadCard(spread = spread, onClick = { onPickSpread(spread.id) })
+                val canCustomize = onEditCustom != null && spread.id in state.customIds
+                SpreadCard(
+                    spread = spread,
+                    isCustom = spread.id in state.customIds,
+                    showAffordances = canCustomize,
+                    onClick = { onPickSpread(spread.id) },
+                    onEdit = { onEditCustom?.invoke(spread.id) },
+                    onDelete = { spreadPendingDelete = spread },
+                )
+            }
+        }
+    }
+
+    spreadPendingDelete?.let { spread ->
+        AlertDialog(
+            onDismissRequest = { spreadPendingDelete = null },
+            title = { Text("Delete \"${spread.name}\"?") },
+            text = {
+                Text("This removes the custom spread and any saved readings keep their snapshot. Bundled spreads can't be deleted.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteCustomSpread(spread.id)
+                    spreadPendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { spreadPendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun CreateCustomCard(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(
+                    text = stringResource(R.string.spreads_create_custom),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                Text(
+                    text = stringResource(R.string.spreads_create_custom_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SpreadCard(spread: Spread, onClick: () -> Unit) {
+private fun SpreadCard(
+    spread: Spread,
+    isCustom: Boolean,
+    showAffordances: Boolean,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = spread.name,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = spread.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = spread.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (spread.description.isNotBlank()) {
+                        Text(
+                            text = spread.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+                if (showAffordances) {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit spread")
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Close, contentDescription = "Delete spread")
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.padding(top = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -116,6 +226,14 @@ private fun SpreadCard(spread: Spread, onClick: () -> Unit) {
                         )
                     },
                 )
+                if (isCustom) {
+                    AssistChip(
+                        onClick = onClick,
+                        label = {
+                            Text("Custom", style = MaterialTheme.typography.labelSmall)
+                        },
+                    )
+                }
             }
         }
     }

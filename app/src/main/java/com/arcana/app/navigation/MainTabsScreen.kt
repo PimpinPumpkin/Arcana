@@ -38,6 +38,8 @@ fun MainTabsScreen(
     onSpreadPicked: (spreadId: String) -> Unit,
     onJournalEntryClick: (readingId: String) -> Unit,
     onLogPhysicalReading: () -> Unit,
+    onCreateCustomSpread: () -> Unit,
+    onEditCustomSpread: (spreadId: String) -> Unit,
 ) {
     val tabs = listOf(
         Tab(Routes.LIBRARY, "Library", Icons.Default.MenuBook),
@@ -79,7 +81,13 @@ fun MainTabsScreen(
             modifier = Modifier.padding(padding).fillMaxSize(),
         ) {
             composable(Routes.LIBRARY) { LibraryScreen(onCardClick = onCardClick) }
-            composable(Routes.SPREADS) { SpreadPickerScreen(onPickSpread = onSpreadPicked) }
+            composable(Routes.SPREADS) {
+                SpreadPickerScreen(
+                    onPickSpread = onSpreadPicked,
+                    onCreateCustom = onCreateCustomSpread,
+                    onEditCustom = onEditCustomSpread,
+                )
+            }
             composable(Routes.JOURNAL) {
                 JournalScreen(
                     onReadingClick = onJournalEntryClick,

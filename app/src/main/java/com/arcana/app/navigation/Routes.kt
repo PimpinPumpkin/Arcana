@@ -31,4 +31,13 @@ object Routes {
     fun journalDetail(readingId: String) = "$JOURNAL_DETAIL/$readingId"
     const val JOURNAL_DETAIL_PATTERN = "$JOURNAL_DETAIL/{readingId}"
     const val ARG_READING_ID = "readingId"
+
+    /**
+     * Custom-spread editor — two routes so creating and editing have
+     * distinct nav destinations (spreadId is required for edit).
+     */
+    const val CUSTOM_SPREAD_NEW = "customSpreadNew"
+    const val CUSTOM_SPREAD_EDIT = "customSpreadEdit"
+    fun customSpreadEdit(spreadId: String) = "$CUSTOM_SPREAD_EDIT/$spreadId"
+    const val CUSTOM_SPREAD_EDIT_PATTERN = "$CUSTOM_SPREAD_EDIT/{spreadId}"
 }
