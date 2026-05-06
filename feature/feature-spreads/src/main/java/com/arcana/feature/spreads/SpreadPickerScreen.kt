@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -99,12 +100,19 @@ fun SpreadPickerScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item("header") {
-                Text(
-                    text = stringResource(R.string.spreads_pick_one),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
+                Column(modifier = Modifier.padding(bottom = 4.dp)) {
+                    Text(
+                        text = stringResource(R.string.spreads_pick_one),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(R.string.spreads_reorder_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             }
             if (onCreateCustom != null) {
                 item("create-custom") {
@@ -254,6 +262,15 @@ private fun SpreadCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Visible drag affordance — long-press anywhere on the card
+                // grabs it for reorder, but the handle icon makes that
+                // discoverable rather than hidden behind a gesture.
+                Icon(
+                    imageVector = Icons.Default.DragHandle,
+                    contentDescription = stringResource(R.string.spreads_drag_handle),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(end = 12.dp),
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = spread.name,
