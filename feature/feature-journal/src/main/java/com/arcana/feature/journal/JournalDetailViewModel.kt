@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.Reading
 import com.arcana.core.domain.model.Spread
+import com.arcana.core.domain.model.SpreadDifficulty
+import com.arcana.core.domain.model.SpreadLayout
 import com.arcana.core.domain.repository.ReadingRepository
 import com.arcana.core.domain.repository.SettingsRepository
 import com.arcana.core.domain.repository.SpreadRepository
@@ -38,7 +40,18 @@ class JournalDetailViewModel @Inject constructor(
     fun load(readingId: String) {
         viewModelScope.launch {
             val reading = readingRepository.getReading(readingId)
-            val spread = reading?.spreadId?.let { spreadRepository.getSpreadById(it) }
+            // Prefer the per-reading snapshot if present (v0.5.0+) so the
+            // journal display is robust against later edit/delete of the
+            // underlying spread. Fall back to the live repo lookup for old
+            // pre-snapshot rows. Final fallback: synthesize a minimal Spread
+            // from the drawn cards' position indexes so the screen still
+            // renders something meaningful even if both lookups fail.
+            val spread = when {
+                reading == null -> null
+                reading.spreadSnapshot != null -> reading.toSnapshotSpread()
+                else -> reading.spreadId.let { spreadRepository.getSpreadById(it) }
+                    ?: reading.toFallbackSpread()
+            }
             val deckId = reading?.deckArtId
                 ?: settingsRepository.appearance.first().deckArtId
             val deck = settingsRepository.getAvailableDecks().firstOrNull { it.id == deckId }
@@ -52,6 +65,31 @@ class JournalDetailViewModel @Inject constructor(
             )
         }
     }
+
+    private fun Reading.toSnapshotSpread(): Spread = Spread(
+        id = spreadId,
+        name = spreadName,
+        description = "",
+        positions = spreadSnapshot.orEmpty(),
+        layout = SpreadLayout.CUSTOM,
+        difficulty = SpreadDifficulty.INTERMEDIATE,
+    )
+
+    /**
+     * Used when both the per-reading snapshot AND the live spread lookup
+     * fail. Builds a no-op Spread so the screen renders the question /
+     * interpretation / notes; cards won't appear in the spread board but
+     * everything else is intact, which beats a "Reading not found" error
+     * for a reading that does, in fact, exist.
+     */
+    private fun Reading.toFallbackSpread(): Spread = Spread(
+        id = spreadId,
+        name = spreadName,
+        description = "",
+        positions = emptyList(),
+        layout = SpreadLayout.CUSTOM,
+        difficulty = SpreadDifficulty.INTERMEDIATE,
+    )
 
     fun onNotesChange(text: String) {
         _state.update { it.copy(notesDraft = text) }

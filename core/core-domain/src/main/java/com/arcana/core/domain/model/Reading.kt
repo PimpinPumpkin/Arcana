@@ -18,4 +18,11 @@ data class Reading(
     val notes: String?,
     val deckArtId: String,
     val kind: ReadingKind = ReadingKind.DIGITAL,
+    /**
+     * Snapshot of the spread's positions captured at save time. Lets the
+     * journal render correctly even if the user later edits or deletes the
+     * underlying custom spread. Null only for readings created before
+     * v0.5.0 introduced the snapshot column.
+     */
+    val spreadSnapshot: List<Position>? = null,
 )

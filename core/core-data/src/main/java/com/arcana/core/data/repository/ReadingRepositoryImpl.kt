@@ -5,6 +5,8 @@ import com.arcana.core.database.entity.DrawnCardEntity
 import com.arcana.core.database.entity.ReadingEntity
 import com.arcana.core.domain.model.DrawnCard
 import com.arcana.core.domain.model.Orientation
+import com.arcana.core.domain.model.Position
+import com.arcana.core.domain.model.PositionCoords
 import com.arcana.core.domain.model.Reading
 import com.arcana.core.domain.model.ReadingKind
 import com.arcana.core.domain.repository.CardRepository
@@ -12,8 +14,38 @@ import com.arcana.core.domain.repository.ReadingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * On-disk shape of a [Position] used only for the reading-snapshot column.
+ * Mirrors domain [Position] but lives here so the domain module doesn't have
+ * to take a serialization dependency. Schema is intentionally flat — column
+ * stores `[{i,l,m,x,y,r}, ...]` to keep the JSON small.
+ */
+@Serializable
+private data class PositionSnapshot(
+    val i: Int,
+    val l: String,
+    val m: String,
+    val x: Float,
+    val y: Float,
+    val r: Float,
+)
+
+private val snapshotJson = Json { ignoreUnknownKeys = true }
+
+private fun List<Position>.toSnapshotJson(): String =
+    snapshotJson.encodeToString(map { PositionSnapshot(it.index, it.label, it.meaning, it.coords.x, it.coords.y, it.coords.rotationDegrees) })
+
+private fun String.snapshotToPositions(): List<Position>? = runCatching {
+    snapshotJson.decodeFromString<List<PositionSnapshot>>(this).map {
+        Position(index = it.i, label = it.l, meaning = it.m, coords = PositionCoords(it.x, it.y, it.r))
+    }
+}.getOrNull()
 
 @Singleton
 class ReadingRepositoryImpl @Inject constructor(
@@ -50,6 +82,7 @@ class ReadingRepositoryImpl @Inject constructor(
             notes = reading.notes,
             deckArtId = reading.deckArtId,
             kind = reading.kind.name,
+            spreadPositionsJson = reading.spreadSnapshot?.toSnapshotJson(),
         )
         val cards = reading.drawnCards.map { dc ->
             DrawnCardEntity(
@@ -99,5 +132,6 @@ class ReadingRepositoryImpl @Inject constructor(
         notes = notes,
         deckArtId = deckArtId,
         kind = runCatching { ReadingKind.valueOf(kind) }.getOrDefault(ReadingKind.DIGITAL),
+        spreadSnapshot = spreadPositionsJson?.snapshotToPositions(),
     )
 }
