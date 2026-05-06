@@ -123,6 +123,16 @@ fun ReadingFlowScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
+        if (state.spreadNotFound) {
+            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    "This spread no longer exists.\nIt may have been deleted from Settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            return@Scaffold
+        }
         if (spread == null) {
             Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Loading…")
@@ -462,6 +472,14 @@ private fun InterpretationStage(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
+                state.backendFallbackNotice?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
                 state.interpretationStatus?.let {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // Spinner ringed by a continuous burst of sparkles —
