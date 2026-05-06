@@ -17,6 +17,9 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -51,7 +54,20 @@ class ModelInstaller @Inject constructor(
             val progress: Float,
         ) : State
         data class Installed(val sizeBytes: Long) : State
-        data class Failed(val message: String) : State
+        data class Failed(val kind: FailureKind, val message: String) : State
+    }
+
+    /**
+     * What went wrong with a download. Lets the UI show the right copy
+     * (e.g. "free up some space" vs "check your network") and decide
+     * whether retry is likely to help.
+     */
+    enum class FailureKind {
+        NETWORK,    // offline, DNS failure, connection dropped, read timeout
+        SERVER,     // HTTP 4xx / 5xx
+        DISK_FULL,  // ENOSPC during write, or pre-flight check rejected install
+        CHECKSUM,   // SHA-256 didn't match the manifest
+        UNKNOWN,    // catch-all
     }
 
     val manifest: ModelManifest = ModelManifest.DEFAULT
@@ -94,10 +110,16 @@ class ModelInstaller @Inject constructor(
             try {
                 runDownload()
             } catch (e: CancellationException) {
+                // Don't strand the .part eating disk if the user cancels.
+                partFile.delete()
                 _state.value = State.NotInstalled
                 throw e
             } catch (e: Throwable) {
-                _state.value = State.Failed(e.message ?: e::class.java.simpleName)
+                // Free the partial download regardless of failure mode —
+                // a half-written file is just disk-pressure with no value.
+                partFile.delete()
+                val (kind, msg) = classify(e)
+                _state.value = State.Failed(kind, msg)
             }
         }
     }
@@ -118,6 +140,18 @@ class ModelInstaller @Inject constructor(
     }
 
     private suspend fun runDownload() {
+        // Pre-flight: bail before downloading a single byte if there isn't
+        // room. Without this, ENOSPC surfaces as a generic IOException
+        // *partway* through the download — confusing UX (progress hits
+        // 60%, then "failed").
+        val needed = manifest.expectedBytes + FREE_SPACE_HEADROOM_BYTES
+        val available = context.filesDir.usableSpace
+        if (available < needed) {
+            throw DiskFullException(
+                "Need ${formatBytes(needed)} free in app storage; have ${formatBytes(available)}.",
+            )
+        }
+
         // Always start fresh — see the class header re: skipping resume in v1.
         partFile.delete()
 
@@ -190,8 +224,49 @@ class ModelInstaller @Inject constructor(
         _state.value = State.Installed(targetFile.length())
     }
 
+    private fun classify(e: Throwable): Pair<FailureKind, String> {
+        val msg = e.message.orEmpty()
+        return when {
+            e is DiskFullException ->
+                FailureKind.DISK_FULL to msg
+            // OS-surfaced "no space left" errors during write.
+            msg.contains("ENOSPC", ignoreCase = true) ||
+                msg.contains("No space left", ignoreCase = true) ->
+                FailureKind.DISK_FULL to "Ran out of free space mid-download. Free some space and retry."
+            e is UnknownHostException ->
+                FailureKind.NETWORK to "Couldn't resolve the download host. Check your internet connection."
+            e is ConnectException ->
+                FailureKind.NETWORK to "Couldn't connect to the download server. Check your internet connection."
+            e is SocketTimeoutException ->
+                FailureKind.NETWORK to "Connection timed out during download. Try again on a more stable network."
+            msg.startsWith("Download server returned HTTP ") ->
+                FailureKind.SERVER to "$msg The model URL may be wrong or the asset isn't published yet."
+            msg.startsWith("Checksum mismatch") ->
+                FailureKind.CHECKSUM to "Downloaded file didn't match the expected checksum. Network glitch — retry."
+            else ->
+                FailureKind.UNKNOWN to msg.ifBlank { e::class.java.simpleName }
+        }
+    }
+
+    private class DiskFullException(message: String) : IOException(message)
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val units = arrayOf("KB", "MB", "GB")
+        var value = bytes.toDouble() / 1024.0
+        var unitIdx = 0
+        while (value >= 1024.0 && unitIdx < units.size - 1) {
+            value /= 1024.0
+            unitIdx++
+        }
+        return "%.1f %s".format(value, units[unitIdx])
+    }
+
     companion object {
         private const val BUFFER_SIZE = 64 * 1024
         private const val EMIT_INTERVAL_BYTES = 256L * 1024L
+        // Leave room for filesystem metadata + the .part → final rename
+        // and a bit of breathing room beyond the model size itself.
+        private const val FREE_SPACE_HEADROOM_BYTES = 64L * 1024L * 1024L
     }
 }
