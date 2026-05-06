@@ -145,6 +145,10 @@ Java_com_arcana_service_ai_local_LlamaBridge_nativeStartGeneration(
     std::string prompt(prompt_c);
     env->ReleaseStringUTFChars(jprompt, prompt_c);
 
+    const int32_t n_ctx = static_cast<int32_t>(llama_n_ctx(session->ctx));
+    ARCANA_LOGI("nativeStartGeneration: prompt %zu chars, n_ctx=%d, max_tokens=%d",
+                prompt.size(), n_ctx, max_tokens);
+
     // First call with a 0-sized buffer returns the negated token count we
     // need to allocate. (Standard llama_tokenize idiom.)
     const int32_t n_needed = -llama_tokenize(
@@ -155,6 +159,18 @@ Java_com_arcana_service_ai_local_LlamaBridge_nativeStartGeneration(
         ARCANA_LOGE("llama_tokenize: bad prompt (n_needed=%d)", n_needed);
         return -2;
     }
+    ARCANA_LOGI("Tokenized prompt: %d tokens", n_needed);
+
+    // Bail before decoding if the prompt + intended generation can't fit
+    // in the context window. Without this, llama_decode may behave
+    // unpredictably (or crash on some Android builds) when the prompt
+    // alone is already close to n_ctx.
+    if (n_needed + max_tokens > n_ctx) {
+        ARCANA_LOGE("Prompt (%d) + max_tokens (%d) exceeds n_ctx (%d)",
+                    n_needed, max_tokens, n_ctx);
+        return -5;
+    }
+
     std::vector<llama_token> tokens(n_needed);
     if (llama_tokenize(
             vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
