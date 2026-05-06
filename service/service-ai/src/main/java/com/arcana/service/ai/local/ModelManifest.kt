@@ -21,20 +21,13 @@ data class ModelManifest(
     companion object {
         /**
          * Qwen 2.5 0.5B Instruct, Q4_K_M GGUF.
-         * Apache 2.0 license. Hosted as an asset on the Arcana repo's
-         * `models-v1` release so we don't depend on Hugging Face auth.
+         * Apache 2.0 license. Mirrored to a `models-v1` release on the
+         * Arcana repo so we don't depend on Hugging Face auth at install
+         * time. Original source:
+         *   https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
          *
-         * To finalize this manifest:
-         *   1. Download Qwen 2.5 0.5B Instruct Q4_K_M GGUF from
-         *      https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
-         *      (or convert from the safetensors weights with llama.cpp's
-         *      convert_hf_to_gguf.py + llama-quantize).
-         *   2. Upload it as `qwen2.5-0.5b-instruct-q4_k_m.gguf` to a
-         *      `models-v1` GitHub Release on PimpinPumpkin/Arcana.
-         *   3. Run `shasum -a 256 qwen2.5-0.5b-instruct-q4_k_m.gguf` and
-         *      paste the hex digest into [sha256] below.
-         *   4. Verify [expectedBytes] matches the actual file size; the
-         *      number below is approximate.
+         * Bytes + SHA-256 captured from the actual mirrored file:
+         *   shasum -a 256 qwen2.5-0.5b-instruct-q4_k_m.gguf
          */
         val QWEN_2_5_0_5B_INSTRUCT = ModelManifest(
             id = "qwen2.5-0.5b-instruct-q4_k_m",
@@ -43,8 +36,8 @@ data class ModelManifest(
             downloadUrl = "https://github.com/PimpinPumpkin/Arcana/releases/download/" +
                 "models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf",
             fileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            expectedBytes = 397_280_768L, // ≈379 MB; refine after upload
-            sha256 = "", // FILL IN after upload
+            expectedBytes = 491_400_032L, // 469 MB
+            sha256 = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
         )
 
         val DEFAULT: ModelManifest = QWEN_2_5_0_5B_INSTRUCT
