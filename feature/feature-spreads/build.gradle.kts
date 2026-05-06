@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":service:service-ai"))
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose) // BackHandler in CustomSpreadEditorScreen
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(platform(libs.androidx.compose.bom))

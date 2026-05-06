@@ -1,5 +1,6 @@
 package com.arcana.feature.spreads
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,12 +63,16 @@ fun CustomSpreadEditorScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val isEditing = state.editingExistingId != null
 
+    // Intercept both the system back gesture and the toolbar back arrow so
+    // either path runs through the discard-confirm gate.
+    BackHandler(enabled = true) { viewModel.requestBack(onBack) }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (isEditing) "Edit spread" else "Create spread") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { viewModel.requestBack(onBack) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -140,6 +145,20 @@ fun CustomSpreadEditorScreen(
             ) {
                 Text(if (isEditing) "Save changes" else "Save spread")
             }
+        }
+
+        if (state.showDiscardConfirm) {
+            AlertDialog(
+                onDismissRequest = viewModel::cancelDiscard,
+                title = { Text("Discard changes?") },
+                text = { Text("You have unsaved changes to this spread. Going back now will lose them.") },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.confirmDiscard(onBack) }) { Text("Discard") }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelDiscard) { Text("Keep editing") }
+                },
+            )
         }
 
         state.draft?.let { draft ->
