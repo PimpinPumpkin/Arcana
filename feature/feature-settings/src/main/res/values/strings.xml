@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_mode">Light/Dark</string>
+    <string name="settings_theme_mode_system">Follow system</string>
+    <string name="settings_theme_mode_light">Light</string>
+    <string name="settings_theme_mode_dark">Dark</string>
+    <string name="settings_dynamic">Use Material You wallpaper colors</string>
+    <string name="settings_deck">Card deck</string>
+    <string name="settings_ai">AI Interpreter</string>
+    <string name="settings_ai_backend">Backend</string>
+    <string name="settings_ai_local">Local LLM (offline)</string>
+    <string name="settings_ai_cloud">Claude API (online)</string>
+    <string name="settings_ai_rules">Rule-based (offline, no AI)</string>
+    <string name="settings_api_key">Anthropic API key</string>
+    <string name="settings_api_key_save">Save key</string>
+    <string name="settings_api_key_placeholder">sk-ant-…</string>
+    <string name="settings_api_key_note">The key is stored on device and only sent to api.anthropic.com when you generate an interpretation with the Claude backend.</string>
+    <string name="settings_local_install">Install local model</string>
+    <string name="settings_local_unavailable">Local LLM runtime not yet bundled in this build. The placeholder is here so you can wire MLC-LLM or llama.cpp later without changing the app surface.</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_text">Arcana — a tarot companion. All card meanings ship offline. The Claude integration is optional and opt-in.</string>
+</resources>

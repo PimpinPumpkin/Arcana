@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "spreads": [
+    {
+      "id": "one_card",
+      "name": "Daily Draw",
+      "description": "A single card pulled to set the tone of the day, answer a quick question, or invite reflection.",
+      "difficulty": "BEGINNER",
+      "layout": "LINEAR",
+      "positions": [
+        { "index": 1, "label": "Today", "meaning": "The energy or message for this moment.", "x": 0.5, "y": 0.5, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "three_card_ppf",
+      "name": "Past · Present · Future",
+      "description": "A classic three-card spread tracing the arc of a situation across time.",
+      "difficulty": "BEGINNER",
+      "layout": "LINEAR",
+      "positions": [
+        { "index": 1, "label": "Past",    "meaning": "What has shaped this — the foundation underneath.", "x": 0.2, "y": 0.5, "rotation": 0 },
+        { "index": 2, "label": "Present", "meaning": "Where you are right now — the current of the moment.", "x": 0.5, "y": 0.5, "rotation": 0 },
+        { "index": 3, "label": "Future",  "meaning": "Where this is heading if the current course holds.", "x": 0.8, "y": 0.5, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "three_card_sao",
+      "name": "Situation · Action · Outcome",
+      "description": "A practical three-card spread for decisions and dilemmas.",
+      "difficulty": "BEGINNER",
+      "layout": "LINEAR",
+      "positions": [
+        { "index": 1, "label": "Situation", "meaning": "The shape of what's actually in front of you.", "x": 0.2, "y": 0.5, "rotation": 0 },
+        { "index": 2, "label": "Action",    "meaning": "The move that wants to be made.", "x": 0.5, "y": 0.5, "rotation": 0 },
+        { "index": 3, "label": "Outcome",   "meaning": "What follows from taking that action.", "x": 0.8, "y": 0.5, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "three_card_mbs",
+      "name": "Mind · Body · Spirit",
+      "description": "A spread for taking your own temperature — useful for journaling and check-ins.",
+      "difficulty": "BEGINNER",
+      "layout": "LINEAR",
+      "positions": [
+        { "index": 1, "label": "Mind",   "meaning": "What's loud in the head right now.", "x": 0.2, "y": 0.5, "rotation": 0 },
+        { "index": 2, "label": "Body",   "meaning": "What the body is carrying or signaling.", "x": 0.5, "y": 0.5, "rotation": 0 },
+        { "index": 3, "label": "Spirit", "meaning": "What the deeper self is reaching toward.", "x": 0.8, "y": 0.5, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "horseshoe",
+      "name": "Horseshoe",
+      "description": "Seven cards in an arc — situation, influences, and what's ahead.",
+      "difficulty": "INTERMEDIATE",
+      "layout": "HORSESHOE",
+      "positions": [
+        { "index": 1, "label": "The Past",          "meaning": "What set the stage.",                               "x": 0.10, "y": 0.65, "rotation": 0 },
+        { "index": 2, "label": "The Present",       "meaning": "Where you are now.",                                "x": 0.22, "y": 0.40, "rotation": 0 },
+        { "index": 3, "label": "Hidden Influences", "meaning": "What's affecting things below the surface.",        "x": 0.36, "y": 0.22, "rotation": 0 },
+        { "index": 4, "label": "Obstacles",         "meaning": "What stands in the way.",                           "x": 0.50, "y": 0.15, "rotation": 0 },
+        { "index": 5, "label": "External Influences","meaning": "How others or the environment are shaping this.",  "x": 0.64, "y": 0.22, "rotation": 0 },
+        { "index": 6, "label": "Advice",            "meaning": "The counsel the cards offer.",                      "x": 0.78, "y": 0.40, "rotation": 0 },
+        { "index": 7, "label": "Likely Outcome",    "meaning": "Where this is heading on the current path.",        "x": 0.90, "y": 0.65, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "celtic_cross",
+      "name": "Celtic Cross",
+      "description": "The most detailed traditional spread — ten cards mapping the situation, its forces, and its trajectory.",
+      "difficulty": "ADVANCED",
+      "layout": "CELTIC_CROSS",
+      "positions": [
+        { "index": 1,  "label": "The Heart",          "meaning": "The core of the situation.",                       "x": 0.35, "y": 0.50, "rotation": 0 },
+        { "index": 2,  "label": "The Cross",          "meaning": "What crosses or challenges you.",                  "x": 0.35, "y": 0.50, "rotation": 90 },
+        { "index": 3,  "label": "Foundation",         "meaning": "What lies beneath — the basis of the matter.",     "x": 0.35, "y": 0.78, "rotation": 0 },
+        { "index": 4,  "label": "The Past",           "meaning": "What has just passed.",                            "x": 0.15, "y": 0.50, "rotation": 0 },
+        { "index": 5,  "label": "Crown",              "meaning": "What is above — your conscious aim.",              "x": 0.35, "y": 0.22, "rotation": 0 },
+        { "index": 6,  "label": "The Near Future",    "meaning": "What is approaching.",                             "x": 0.55, "y": 0.50, "rotation": 0 },
+        { "index": 7,  "label": "Self",               "meaning": "How you stand in the situation.",                  "x": 0.85, "y": 0.85, "rotation": 0 },
+        { "index": 8,  "label": "Environment",        "meaning": "How others around you affect it.",                 "x": 0.85, "y": 0.65, "rotation": 0 },
+        { "index": 9,  "label": "Hopes and Fears",    "meaning": "What you long for — and quietly dread.",           "x": 0.85, "y": 0.40, "rotation": 0 },
+        { "index": 10, "label": "Outcome",            "meaning": "Where it all leads.",                              "x": 0.85, "y": 0.18, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "relationship_5",
+      "name": "Relationship",
+      "description": "Five cards examining the dynamics between you and someone else.",
+      "difficulty": "INTERMEDIATE",
+      "layout": "CUSTOM",
+      "positions": [
+        { "index": 1, "label": "You",                  "meaning": "What you bring to this connection.",        "x": 0.20, "y": 0.65, "rotation": 0 },
+        { "index": 2, "label": "Them",                 "meaning": "What they bring.",                          "x": 0.80, "y": 0.65, "rotation": 0 },
+        { "index": 3, "label": "The Bond",             "meaning": "The shape of what's between you.",          "x": 0.50, "y": 0.65, "rotation": 0 },
+        { "index": 4, "label": "Strengths",            "meaning": "What is healthy and worth tending.",        "x": 0.35, "y": 0.30, "rotation": 0 },
+        { "index": 5, "label": "What Needs Attention", "meaning": "Where care or honesty is asked for.",       "x": 0.65, "y": 0.30, "rotation": 0 }
+      ]
+    },
+    {
+      "id": "year_ahead",
+      "name": "Year Ahead",
+      "description": "Twelve cards arranged as a wheel — one for each month of the coming year.",
+      "difficulty": "ADVANCED",
+      "layout": "YEAR_WHEEL",
+      "positions": [
+        { "index": 1,  "label": "Month 1",  "meaning": "The opening month and its theme.",     "x": 0.50, "y": 0.10, "rotation": 0 },
+        { "index": 2,  "label": "Month 2",  "meaning": "The energy of the second month.",      "x": 0.70, "y": 0.16, "rotation": 30 },
+        { "index": 3,  "label": "Month 3",  "meaning": "The third month's invitation.",         "x": 0.85, "y": 0.32, "rotation": 60 },
+        { "index": 4,  "label": "Month 4",  "meaning": "The fourth month's terrain.",           "x": 0.90, "y": 0.50, "rotation": 90 },
+        { "index": 5,  "label": "Month 5",  "meaning": "The fifth month's lesson.",             "x": 0.85, "y": 0.68, "rotation": 120 },
+        { "index": 6,  "label": "Month 6",  "meaning": "The midpoint and what it asks of you.", "x": 0.70, "y": 0.84, "rotation": 150 },
+        { "index": 7,  "label": "Month 7",  "meaning": "The seventh month's turning.",          "x": 0.50, "y": 0.90, "rotation": 180 },
+        { "index": 8,  "label": "Month 8",  "meaning": "The eighth month's offering.",          "x": 0.30, "y": 0.84, "rotation": 210 },
+        { "index": 9,  "label": "Month 9",  "meaning": "The ninth month's depth.",              "x": 0.15, "y": 0.68, "rotation": 240 },
+        { "index": 10, "label": "Month 10", "meaning": "The tenth month's harvest.",            "x": 0.10, "y": 0.50, "rotation": 270 },
+        { "index": 11, "label": "Month 11", "meaning": "The eleventh month's reflection.",      "x": 0.15, "y": 0.32, "rotation": 300 },
+        { "index": 12, "label": "Month 12", "meaning": "The closing month and its blessing.",   "x": 0.30, "y": 0.16, "rotation": 330 }
+      ]
+    }
+  ]
+}

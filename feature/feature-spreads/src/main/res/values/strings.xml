@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="spreads_title">Spreads</string>
+    <string name="spreads_pick_one">Pick a spread</string>
+    <string name="spreads_question_label">Your question (optional)</string>
+    <string name="spreads_question_hint">What weighs on your mind?</string>
+    <string name="spreads_continue">Shuffle the deck</string>
+    <string name="spreads_shuffling">Shuffling…</string>
+    <string name="spreads_reveal">Reveal cards</string>
+    <string name="spreads_interpret">Interpret with AI</string>
+    <string name="spreads_save">Save reading</string>
+    <string name="spreads_back">Back</string>
+    <string name="spreads_card_count">%1$d cards</string>
+    <string name="spreads_difficulty">%1$s</string>
+    <string name="spreads_allow_reversed">Allow reversed cards</string>
+    <string name="spreads_tone">Tone</string>
+</resources>

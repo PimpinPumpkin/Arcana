@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcana</string>
+    <string name="tab_library">Library</string>
+    <string name="tab_spreads">Spreads</string>
+    <string name="tab_journal">Journal</string>
+    <string name="tab_settings">Settings</string>
+
+    <string name="library_title">Card Library</string>
+    <string name="library_search_hint">Search cards…</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_major">Major Arcana</string>
+    <string name="library_filter_wands">Wands</string>
+    <string name="library_filter_cups">Cups</string>
+    <string name="library_filter_swords">Swords</string>
+    <string name="library_filter_pentacles">Pentacles</string>
+
+    <string name="card_upright">Upright</string>
+    <string name="card_reversed">Reversed</string>
+    <string name="card_keywords">Keywords</string>
+    <string name="card_element">Element</string>
+    <string name="card_astrology">Astrology</string>
+    <string name="card_numerology">Numerology</string>
+
+    <string name="spreads_title">Spreads</string>
+    <string name="spreads_question_label">Your question (optional)</string>
+    <string name="spreads_question_hint">What weighs on your mind?</string>
+    <string name="spreads_continue">Continue</string>
+    <string name="spreads_shuffle">Shuffle the deck</string>
+    <string name="spreads_shuffle_done">Reveal cards</string>
+    <string name="spreads_interpret">Interpret with AI</string>
+    <string name="spreads_save">Save reading</string>
+
+    <string name="journal_title">Journal</string>
+    <string name="journal_empty">No saved readings yet</string>
+    <string name="journal_delete">Delete</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_deck">Card deck</string>
+    <string name="settings_ai">AI Interpreter</string>
+    <string name="settings_ai_backend">Backend</string>
+    <string name="settings_ai_local">Local model (offline)</string>
+    <string name="settings_ai_cloud">Claude API (online)</string>
+    <string name="settings_ai_rules">Rule-based (no AI)</string>
+    <string name="settings_api_key">API key</string>
+    <string name="settings_api_key_placeholder">Paste your Anthropic API key</string>
+    <string name="settings_about">About</string>
+</resources>

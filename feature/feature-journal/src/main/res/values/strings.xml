@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="journal_title">Journal</string>
+    <string name="journal_empty_title">No saved readings yet</string>
+    <string name="journal_empty_subtitle">Pull a spread and tap Save when you want to keep one.</string>
+    <string name="journal_delete">Delete</string>
+    <string name="journal_notes_label">Your notes</string>
+    <string name="journal_save_notes">Save notes</string>
+    <string name="journal_re_interpret">Re-interpret</string>
+    <string name="journal_back">Back</string>
+</resources>
