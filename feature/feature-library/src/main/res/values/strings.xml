@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_title">Card Library</string>
+    <string name="library_search_hint">Search cards…</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_major">Major Arcana</string>
+    <string name="library_filter_wands">Wands</string>
+    <string name="library_filter_cups">Cups</string>
+    <string name="library_filter_swords">Swords</string>
+    <string name="library_filter_pentacles">Pentacles</string>
+</resources>

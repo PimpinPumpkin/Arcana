@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Six-pointed star (Star of David / mystic seal) centered in safe zone -->
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M54,28 L62,46 L82,46 L66,57 L72,76 L54,65 L36,76 L42,57 L26,46 L46,46 Z" />
+    <path
+        android:fillColor="#D4AF37"
+        android:fillAlpha="0.6"
+        android:pathData="M54,76 L60,62 L74,62 L62,53 L67,40 L54,48 L41,40 L46,53 L34,62 L48,62 Z" />
+
+    <!-- Eye in center -->
+    <path
+        android:fillColor="#1A1226"
+        android:pathData="M54,52 m-6,0 a6,3 0 1,0 12,0 a6,3 0 1,0 -12,0" />
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M54,52 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+</vector>
