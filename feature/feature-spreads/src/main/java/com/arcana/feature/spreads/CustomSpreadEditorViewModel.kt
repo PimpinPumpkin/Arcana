@@ -31,6 +31,11 @@ data class CustomSpreadEditorUiState(
     /** Non-null while the position-editor dialog is open. */
     val draft: PositionDraft? = null,
     val isLoading: Boolean = false,
+    /** True iff the user has changed name/description/positions since
+     *  the screen opened. Used to gate the discard-confirm dialog. */
+    val isDirty: Boolean = false,
+    /** True while the discard-confirm dialog is open. */
+    val showDiscardConfirm: Boolean = false,
 )
 
 /**
@@ -76,8 +81,8 @@ class CustomSpreadEditorViewModel @Inject constructor(
         }
     }
 
-    fun setName(value: String) = _state.update { it.copy(name = value) }
-    fun setDescription(value: String) = _state.update { it.copy(description = value) }
+    fun setName(value: String) = _state.update { it.copy(name = value, isDirty = true) }
+    fun setDescription(value: String) = _state.update { it.copy(description = value, isDirty = true) }
 
     /** Tap on an empty grid cell → start adding a new position there. */
     fun beginAddPositionAt(col: Int, row: Int) {
@@ -143,7 +148,7 @@ class CustomSpreadEditorViewModel @Inject constructor(
             val updated = it.positions.toMutableList()
             val existingIdx = updated.indexOfFirst { p -> p.index == draft.index }
             if (existingIdx >= 0) updated[existingIdx] = pos else updated += pos
-            it.copy(positions = updated, draft = null)
+            it.copy(positions = updated, draft = null, isDirty = true)
         }
     }
 
@@ -155,9 +160,24 @@ class CustomSpreadEditorViewModel @Inject constructor(
                 // and DrawnCard.positionIndex in sync after a delete.
                 .sortedBy { it.index }
                 .mapIndexed { i, pos -> pos.copy(index = i + 1) }
-            current.copy(positions = survivors, draft = null)
+            current.copy(positions = survivors, draft = null, isDirty = true)
         }
     }
+
+    fun requestBack(onLeave: () -> Unit) {
+        if (_state.value.isDirty) {
+            _state.update { it.copy(showDiscardConfirm = true) }
+        } else {
+            onLeave()
+        }
+    }
+
+    fun confirmDiscard(onLeave: () -> Unit) {
+        _state.update { it.copy(showDiscardConfirm = false) }
+        onLeave()
+    }
+
+    fun cancelDiscard() = _state.update { it.copy(showDiscardConfirm = false) }
 
     fun saveSpread(onSaved: (spreadId: String) -> Unit) {
         val current = _state.value
@@ -174,6 +194,9 @@ class CustomSpreadEditorViewModel @Inject constructor(
                 difficulty = SpreadDifficulty.INTERMEDIATE,
             )
             spreadRepository.saveCustomSpread(spread)
+            // After a successful save, the in-memory state matches what's on
+            // disk, so back-press should not prompt for discard.
+            _state.update { it.copy(isDirty = false) }
             onSaved(id)
         }
     }
