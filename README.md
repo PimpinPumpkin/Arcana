@@ -44,11 +44,13 @@ service/
 ### Mac / Linux
 
 ```bash
-git clone https://github.com/PimpinPumpkin/Arcana.git
+git clone --recurse-submodules https://github.com/PimpinPumpkin/Arcana.git
 cd Arcana
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # or hard-code the path
 ./gradlew assembleRelease
 ```
+
+If you cloned without `--recurse-submodules`, run `git submodule update --init --recursive` from the repo root — `service/service-ai` vendors llama.cpp as a submodule.
 
 APK lands at `app/build/outputs/apk/release/app-release.apk` (~44 MB after R8 + resource shrinking).
 
@@ -69,6 +71,7 @@ It retries up to 15 times and rescues stuck temp workspaces with PowerShell betw
 
 - JDK 17 (Eclipse Temurin recommended on Windows ARM — Microsoft OpenJDK ARM has a `Files.move` NIO bug)
 - Android SDK 35 (cmdline-tools, platform-tools, build-tools 35.0.0, platforms;android-35)
+- Android NDK 27 + CMake 3.22.1 (for the on-device LLM native build in `service/service-ai`)
 - Gradle 8.11.1 (the wrapper bootstraps automatically)
 
 Android Studio Ladybug or newer handles all of this for you.
