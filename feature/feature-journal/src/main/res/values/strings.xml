@@ -8,4 +8,7 @@
     <string name="journal_save_notes">Save notes</string>
     <string name="journal_re_interpret">Re-interpret</string>
     <string name="journal_back">Back</string>
+    <string name="journal_save_done">Saved ✓</string>
+    <string name="journal_saved_message">Reading saved</string>
+    <string name="journal_saved_view">View</string>
 </resources>

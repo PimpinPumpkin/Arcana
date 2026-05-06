@@ -8,10 +8,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +62,7 @@ fun TarotCardView(
 ) {
     val deckHasArt = LocalDeckHasArt.current(deck.id)
     val isReversed = orientation == Orientation.REVERSED
+    var tapCounter by remember { mutableIntStateOf(0) }
 
     Box(
         modifier = modifier
@@ -62,7 +71,12 @@ fun TarotCardView(
             .clip(CardShapes.tarotCard)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, MaterialTheme.colorScheme.outline, CardShapes.tarotCard)
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it },
+            .let {
+                if (onClick != null) it.clickable {
+                    tapCounter++
+                    onClick()
+                } else it
+            },
         contentAlignment = Alignment.Center,
     ) {
         // Rotate the inner content (the art / fallback) when reversed.
@@ -105,6 +119,9 @@ fun TarotCardView(
         }
         if (isReversed) {
             ReversedRibbon()
+        }
+        if (tapCounter > 0) {
+            CardSparkleEmitter(triggerKey = tapCounter)
         }
     }
 }
@@ -175,15 +192,17 @@ private fun ReversedRibbon() {
     ) {
         Box(
             modifier = Modifier
-                .clip(MaterialTheme.shapes.extraSmall)
-                .background(ArcanaColors.ReversedRibbon)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+                .size(20.dp)
+                .shadow(2.dp, CircleShape)
+                .clip(CircleShape)
+                .background(ArcanaColors.ReversedRibbon),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "Reversed",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
+            Icon(
+                imageVector = Icons.Default.ArrowDownward,
+                contentDescription = "Reversed",
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
             )
         }
     }
