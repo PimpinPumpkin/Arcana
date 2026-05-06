@@ -1,42 +1,96 @@
 package com.arcana.service.ai.local
 
 import com.arcana.core.domain.model.AiBackendType
-import com.arcana.core.domain.repository.SettingsRepository
 import com.arcana.service.ai.InterpretationChunk
 import com.arcana.service.ai.InterpretationRequest
+import com.arcana.service.ai.PromptBuilder
 import com.arcana.service.ai.TarotInterpreter
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * On-device LLM interpreter — currently a placeholder.
+ * On-device LLM interpreter using llama.cpp + a downloaded GGUF.
  *
- * To wire this up:
- *   1. Add the MLC-LLM Android AAR or equivalent (e.g. llama.cpp JNI bridge) to this module.
- *   2. Implement model download in the Settings screen (sets [SettingsRepository.setLocalModelInstalled]).
- *   3. Replace the body of [interpret] with a real streaming inference call using the system prompt
- *      from [com.arcana.service.ai.PromptBuilder].
- *
- * Until those steps are done, this reports Unavailable and the UI directs the user
- * either to install a model, switch to Claude, or use the rule-based fallback.
+ * Flow:
+ *   1. [ModelInstaller] reports whether the file is on disk via
+ *      [ModelInstaller.modelFile]. If null → emit a friendly error pointing
+ *      the user at Settings.
+ *   2. Otherwise, ensure [LlamaEngine] has the file loaded (cheap if it
+ *      already does, since the engine caches the session).
+ *   3. Format the prompt in Qwen's ChatML template, hand it to the engine,
+ *      and re-emit each token piece as an [InterpretationChunk.Text].
  */
 @Singleton
 class LocalLlmInterpreter @Inject constructor(
-    private val settingsRepository: SettingsRepository,
+    private val modelInstaller: ModelInstaller,
+    private val engine: LlamaEngine,
 ) : TarotInterpreter {
 
     override val type = AiBackendType.LOCAL_LLM
-    override val isAvailable: Boolean = false
+
+    // Reflect installation state — InterpreterRegistry uses this to fall
+    // through to RuleBasedInterpreter when the user hasn't installed yet.
+    override val isAvailable: Boolean
+        get() = modelInstaller.modelFile != null
 
     override fun interpret(request: InterpretationRequest): Flow<InterpretationChunk> = flow {
-        val ai = settingsRepository.ai.first()
-        if (!ai.localModelInstalled) {
-            emit(InterpretationChunk.Error("Local model not installed yet. Install one in Settings, or switch to a different backend."))
+        val file = modelInstaller.modelFile
+        if (file == null) {
+            emit(
+                InterpretationChunk.Error(
+                    "Local model not installed. Open Settings → AI Interpreter and tap Install.",
+                ),
+            )
             return@flow
         }
-        emit(InterpretationChunk.Error("Local LLM runtime is not yet wired into this build. Use Claude or the rule-based reader for now."))
+
+        emit(InterpretationChunk.Status("Loading model…"))
+        if (!engine.loadModel(file)) {
+            emit(
+                InterpretationChunk.Error(
+                    "Couldn't load the local model. The file may be incomplete or corrupted — try reinstalling from Settings.",
+                ),
+            )
+            return@flow
+        }
+
+        emit(InterpretationChunk.Status("Generating…"))
+
+        val prompt = buildChatMlPrompt(
+            system = PromptBuilder.SYSTEM_PROMPT,
+            user = PromptBuilder.userPrompt(request),
+        )
+
+        try {
+            engine.generate(prompt).collect { piece ->
+                // Some chat models emit role/end tokens as visible text on
+                // small/quantized weights. Strip the obvious ones so we
+                // don't leak template literals into the reading.
+                if (piece.contains("<|im_end|>") || piece.contains("<|im_start|>")) {
+                    return@collect
+                }
+                emit(InterpretationChunk.Text(piece))
+            }
+            emit(InterpretationChunk.Complete)
+        } catch (e: Throwable) {
+            emit(
+                InterpretationChunk.Error(
+                    "Local generation failed: ${e.message ?: e::class.java.simpleName}",
+                    e,
+                ),
+            )
+        }
+    }
+
+    // Qwen 2.5 (and most modern instruct models) are trained on this
+    // template. llama.cpp ships a `llama_chat_apply_template` that could do
+    // this for us, but hardcoding here keeps the bridge surface tiny and
+    // makes prompt tuning a Kotlin edit away.
+    private fun buildChatMlPrompt(system: String, user: String): String = buildString {
+        append("<|im_start|>system\n").append(system).append("<|im_end|>\n")
+        append("<|im_start|>user\n").append(user).append("<|im_end|>\n")
+        append("<|im_start|>assistant\n")
     }
 }
