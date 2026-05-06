@@ -74,6 +74,13 @@ class ReadingFlowViewModel @Inject constructor(
     private val _state = MutableStateFlow(ReadingFlowUiState())
     val state: StateFlow<ReadingFlowUiState> = _state.asStateFlow()
 
+    /**
+     * Mirror of [ModelInstaller.state] so the reading screen can surface a
+     * progress banner / failure card without each composable touching the
+     * service-layer singleton directly.
+     */
+    val installState: StateFlow<ModelInstaller.State> = modelInstaller.state
+
     private var interpretJob: Job? = null
 
     init {
@@ -119,7 +126,7 @@ class ReadingFlowViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         showFirstTapPrompt = true,
-                        firstTapDownloadBytes = modelInstaller.manifest.expectedBytes,
+                        firstTapDownloadBytes = modelInstaller.manifest.value.expectedBytes,
                     )
                 }
             } else {
@@ -201,6 +208,12 @@ class ReadingFlowViewModel @Inject constructor(
             }
         }
     }
+
+    /** Called by the in-screen download banner if the install fails. */
+    fun retryLocalInstall() = modelInstaller.install()
+
+    /** Called by the in-screen download banner's cancel button. */
+    fun cancelLocalInstall() = modelInstaller.cancel()
 
     fun saveCurrentReading() {
         val current = _state.value

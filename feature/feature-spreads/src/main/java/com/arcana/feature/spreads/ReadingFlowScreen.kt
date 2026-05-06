@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,7 +40,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -50,6 +54,7 @@ import com.arcana.core.ui.components.MarkdownText
 import com.arcana.core.ui.components.ShuffleAnimation
 import com.arcana.core.ui.components.SpreadBoard
 import com.arcana.service.ai.InterpretationTone
+import com.arcana.service.ai.local.ModelInstaller
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +65,7 @@ fun ReadingFlowScreen(
     viewModel: ReadingFlowViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val installState by viewModel.installState.collectAsStateWithLifecycle()
     val spread = state.spread
     val snackbarHostState = remember { SnackbarHostState() }
     val isSaved = state.savedReadingId != null
@@ -74,6 +80,24 @@ fun ReadingFlowScreen(
             withDismissAction = true,
         )
         if (result == SnackbarResult.ActionPerformed) onSaved(id)
+    }
+
+    // When the install transitions Downloading → Installed (i.e. the user's
+    // first-tap install just finished while they were on this screen), pop a
+    // snackbar so they know they can tap Interpret again to use the offline
+    // model. Track previous state in a remember so we only fire on the actual
+    // transition, not every recomposition while in Installed.
+    var previousInstallState by remember {
+        mutableStateOf<ModelInstaller.State>(installState)
+    }
+    val readyMessage = stringResource(R.string.spreads_install_ready)
+    LaunchedEffect(installState) {
+        val justFinished = previousInstallState is ModelInstaller.State.Downloading &&
+            installState is ModelInstaller.State.Installed
+        if (justFinished) {
+            snackbarHostState.showSnackbar(readyMessage, withDismissAction = true)
+        }
+        previousInstallState = installState
     }
 
     Scaffold(
@@ -96,40 +120,51 @@ fun ReadingFlowScreen(
             return@Scaffold
         }
 
-        AnimatedContent(
-            targetState = state.stage,
-            label = "reading-stage",
+        Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize(),
-        ) { stage ->
-            when (stage) {
-                ReadingStage.QUESTION -> QuestionStage(
-                    state = state,
-                    onQuestionChange = viewModel::onQuestionChanged,
-                    onToggleReversed = viewModel::onToggleReversed,
-                    onToneChange = viewModel::onToneChanged,
-                    onContinue = viewModel::startShuffle,
-                )
-                ReadingStage.SHUFFLING -> ShufflingStage()
-                ReadingStage.REVEAL -> RevealStage(
-                    state = state,
-                    isSaved = isSaved,
-                    onCardClick = onCardClick,
-                    onInterpret = viewModel::onInterpretTapped,
-                    onSave = {
-                        viewModel.saveCurrentReading()
-                    },
-                )
-                ReadingStage.INTERPRETATION -> InterpretationStage(
-                    state = state,
-                    isSaved = isSaved,
-                    onCardClick = onCardClick,
-                    onRetry = viewModel::requestInterpretation,
-                    onSave = {
-                        viewModel.saveCurrentReading()
-                    },
-                )
+        ) {
+            InstallBanner(
+                state = installState,
+                onCancel = viewModel::cancelLocalInstall,
+                onRetry = viewModel::retryLocalInstall,
+            )
+            AnimatedContent(
+                targetState = state.stage,
+                label = "reading-stage",
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) { stage ->
+                when (stage) {
+                    ReadingStage.QUESTION -> QuestionStage(
+                        state = state,
+                        onQuestionChange = viewModel::onQuestionChanged,
+                        onToggleReversed = viewModel::onToggleReversed,
+                        onToneChange = viewModel::onToneChanged,
+                        onContinue = viewModel::startShuffle,
+                    )
+                    ReadingStage.SHUFFLING -> ShufflingStage()
+                    ReadingStage.REVEAL -> RevealStage(
+                        state = state,
+                        isSaved = isSaved,
+                        onCardClick = onCardClick,
+                        onInterpret = viewModel::onInterpretTapped,
+                        onSave = {
+                            viewModel.saveCurrentReading()
+                        },
+                    )
+                    ReadingStage.INTERPRETATION -> InterpretationStage(
+                        state = state,
+                        isSaved = isSaved,
+                        onCardClick = onCardClick,
+                        onRetry = viewModel::requestInterpretation,
+                        onSave = {
+                            viewModel.saveCurrentReading()
+                        },
+                    )
+                }
             }
         }
 
@@ -169,6 +204,80 @@ private fun FirstTapInstallDialog(
             }
         },
     )
+}
+
+/**
+ * Strip-style banner shown above the reading stages while the offline-AI
+ * model is downloading or after a download has just failed. Hidden when the
+ * installer is in [ModelInstaller.State.NotInstalled] or [ModelInstaller.State.Installed]
+ * — the success-transition snackbar handles "ready to use" feedback.
+ */
+@Composable
+private fun InstallBanner(
+    state: ModelInstaller.State,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = state is ModelInstaller.State.Downloading ||
+            state is ModelInstaller.State.Failed,
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (state is ModelInstaller.State.Failed) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+            ),
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                when (state) {
+                    is ModelInstaller.State.Downloading -> {
+                        val pct = (state.progress * 100).toInt().coerceIn(0, 100)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(
+                                    R.string.spreads_install_progress,
+                                    pct,
+                                    formatBytes(state.bytesDone),
+                                    formatBytes(state.totalBytes),
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = onCancel) {
+                                Text(stringResource(R.string.spreads_install_cancel))
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { state.progress.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                        )
+                    }
+                    is ModelInstaller.State.Failed -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = stringResource(R.string.spreads_install_failed, state.message),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = onRetry) {
+                                Text(stringResource(R.string.spreads_install_retry))
+                            }
+                        }
+                    }
+                    else -> Unit // not visible
+                }
+            }
+        }
+    }
 }
 
 private fun formatBytes(bytes: Long): String {
@@ -345,11 +454,19 @@ private fun InterpretationStage(
             Column(modifier = Modifier.padding(16.dp)) {
                 state.interpretationStatus?.let {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.height(16.dp), strokeWidth = 2.dp)
+                        // M3 1.4-alpha's CircularProgressIndicator was
+                        // redesigned with a wavy/orbiting animation that
+                        // needs a square box. Specifying only height was
+                        // letting the width float and the indicator
+                        // appeared to wobble off-axis.
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.5.dp,
+                        )
                         Text(
                             it,
                             style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier.padding(start = 10.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
