@@ -2,19 +2,24 @@ package com.arcana.feature.spreads
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -40,16 +45,21 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcana.core.ui.components.CardSparkleEmitter
 import com.arcana.core.ui.components.MarkdownText
 import com.arcana.core.ui.components.ShuffleAnimation
 import com.arcana.core.ui.components.SpreadBoard
@@ -454,15 +464,31 @@ private fun InterpretationStage(
             Column(modifier = Modifier.padding(16.dp)) {
                 state.interpretationStatus?.let {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // M3 1.4-alpha's CircularProgressIndicator was
-                        // redesigned with a wavy/orbiting animation that
-                        // needs a square box. Specifying only height was
-                        // letting the width float and the indicator
-                        // appeared to wobble off-axis.
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.5.dp,
-                        )
+                        // Spinner ringed by a continuous burst of sparkles —
+                        // re-uses CardSparkleEmitter with a periodic trigger
+                        // bump so the loop pulses every ~700ms. Particles fade
+                        // over ~650ms so the sparkle ring stays roughly
+                        // continuous without piling up.
+                        Box(
+                            modifier = Modifier.size(56.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            var sparkleKey by remember { mutableIntStateOf(1) }
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    kotlinx.coroutines.delay(700)
+                                    sparkleKey++
+                                }
+                            }
+                            CardSparkleEmitter(
+                                triggerKey = sparkleKey,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.5.dp,
+                            )
+                        }
                         Text(
                             it,
                             style = MaterialTheme.typography.labelMedium,
@@ -472,13 +498,68 @@ private fun InterpretationStage(
                     }
                 }
                 AnimatedVisibility(visible = state.interpretation.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(280.dp)
-                            .verticalScroll(rememberScrollState()),
-                    ) {
-                        MarkdownText(text = state.interpretation)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Re-interpret action shows up only once a generation
+                        // has completed (or paused) — useful when the small
+                        // model produces wonky output and you want another roll.
+                        if (!state.isInterpreting && state.interpretationError == null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(onClick = onRetry) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(stringResource(R.string.spreads_reinterpret))
+                                }
+                            }
+                        }
+
+                        // Scrollable interpretation body, with an explicit
+                        // scrollbar overlay (Compose's default verticalScroll
+                        // doesn't show one).
+                        val scrollState = rememberScrollState()
+                        val scrollbarColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(280.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(scrollState)
+                                    .padding(end = 12.dp),
+                            ) {
+                                MarkdownText(text = state.interpretation)
+                            }
+                            if (scrollState.maxValue > 0) {
+                                Canvas(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .fillMaxHeight()
+                                        .width(6.dp),
+                                ) {
+                                    val viewport = size.height
+                                    val totalContent = viewport + scrollState.maxValue
+                                    val thumbHeight = (viewport * viewport / totalContent)
+                                        .coerceAtLeast(40f)
+                                    val frac = scrollState.value.toFloat() /
+                                        scrollState.maxValue.toFloat().coerceAtLeast(1f)
+                                    val thumbY = (viewport - thumbHeight) * frac
+                                    drawRoundRect(
+                                        color = scrollbarColor.copy(alpha = 0.65f),
+                                        topLeft = Offset(0f, thumbY),
+                                        size = Size(size.width, thumbHeight),
+                                        cornerRadius = CornerRadius(size.width / 2f),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 state.interpretationError?.let {
@@ -489,7 +570,7 @@ private fun InterpretationStage(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                     Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
-                        Text("Try again")
+                        Text(stringResource(R.string.spreads_try_again))
                     }
                 }
             }
