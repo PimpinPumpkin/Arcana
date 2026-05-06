@@ -35,6 +35,7 @@ class SettingsRepositoryImpl @Inject constructor(
         val CLAUDE_MODEL = stringPreferencesKey("claude_model_id")
         val LOCAL_MODEL = stringPreferencesKey("local_model_id")
         val LOCAL_MODEL_INSTALLED = booleanPreferencesKey("local_model_installed")
+        val INTERPRET_PROMPT_SHOWN = booleanPreferencesKey("interpret_prompt_shown")
     }
 
     override val appearance: Flow<AppearanceSettings> = context.settingsDataStore.data.map { prefs ->
@@ -55,6 +56,7 @@ class SettingsRepositoryImpl @Inject constructor(
             localModelInstalled = prefs[Keys.LOCAL_MODEL_INSTALLED] ?: false,
             localModelId = prefs[Keys.LOCAL_MODEL] ?: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
             claudeModelId = prefs[Keys.CLAUDE_MODEL] ?: "claude-sonnet-4-5",
+            interpretPromptShown = prefs[Keys.INTERPRET_PROMPT_SHOWN] ?: false,
         )
     }
 
@@ -87,5 +89,9 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setLocalModelInstalled(installed: Boolean) {
         context.settingsDataStore.edit { it[Keys.LOCAL_MODEL_INSTALLED] = installed }
+    }
+
+    override suspend fun setInterpretPromptShown(shown: Boolean) {
+        context.settingsDataStore.edit { it[Keys.INTERPRET_PROMPT_SHOWN] = shown }
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -27,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -114,10 +116,7 @@ fun ReadingFlowScreen(
                     state = state,
                     isSaved = isSaved,
                     onCardClick = onCardClick,
-                    onInterpret = {
-                        viewModel.goToInterpretation()
-                        viewModel.requestInterpretation()
-                    },
+                    onInterpret = viewModel::onInterpretTapped,
                     onSave = {
                         viewModel.saveCurrentReading()
                     },
@@ -133,7 +132,55 @@ fun ReadingFlowScreen(
                 )
             }
         }
+
+        if (state.showFirstTapPrompt) {
+            FirstTapInstallDialog(
+                downloadBytes = state.firstTapDownloadBytes,
+                onInstall = viewModel::onFirstTapInstall,
+                onNotNow = viewModel::onFirstTapNotNow,
+                onDismiss = viewModel::onFirstTapDismissed,
+            )
+        }
     }
+}
+
+@Composable
+private fun FirstTapInstallDialog(
+    downloadBytes: Long,
+    onInstall: () -> Unit,
+    onNotNow: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sizeLabel = remember(downloadBytes) { formatBytes(downloadBytes) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.spreads_first_install_title)) },
+        text = {
+            Text(stringResource(R.string.spreads_first_install_body, sizeLabel))
+        },
+        confirmButton = {
+            TextButton(onClick = onInstall) {
+                Text(stringResource(R.string.spreads_first_install_yes, sizeLabel))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onNotNow) {
+                Text(stringResource(R.string.spreads_first_install_no))
+            }
+        },
+    )
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val units = arrayOf("KB", "MB", "GB")
+    var value = bytes.toDouble() / 1024.0
+    var unitIdx = 0
+    while (value >= 1024.0 && unitIdx < units.size - 1) {
+        value /= 1024.0
+        unitIdx++
+    }
+    return "%.0f %s".format(value, units[unitIdx])
 }
 
 @Composable

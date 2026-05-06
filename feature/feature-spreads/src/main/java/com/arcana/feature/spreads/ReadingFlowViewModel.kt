@@ -3,6 +3,7 @@ package com.arcana.feature.spreads
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arcana.core.domain.model.AiBackendType
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.DrawnCard
 import com.arcana.core.domain.model.Spread
@@ -15,6 +16,8 @@ import com.arcana.service.ai.InterpretationChunk
 import com.arcana.service.ai.InterpretationRequest
 import com.arcana.service.ai.InterpretationTone
 import com.arcana.service.ai.InterpreterRegistry
+import com.arcana.service.ai.local.ModelInstaller
+import com.arcana.service.ai.local.ModelManifest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,6 +44,10 @@ data class ReadingFlowUiState(
     val interpretationStatus: String? = null,
     val interpretationError: String? = null,
     val savedReadingId: String? = null,
+    /** True when we should be showing the first-tap "install offline AI?" dialog. */
+    val showFirstTapPrompt: Boolean = false,
+    /** Bytes to display in the dialog; cached from [ModelManifest]. */
+    val firstTapDownloadBytes: Long = ModelManifest.DEFAULT.expectedBytes,
 )
 
 @HiltViewModel
@@ -52,6 +59,7 @@ class ReadingFlowViewModel @Inject constructor(
     private val drawSpread: DrawSpreadUseCase,
     private val saveReading: SaveReadingUseCase,
     private val interpreterRegistry: InterpreterRegistry,
+    private val modelInstaller: ModelInstaller,
 ) : ViewModel() {
 
     init {
@@ -94,6 +102,64 @@ class ReadingFlowViewModel @Inject constructor(
 
     fun goToInterpretation() {
         _state.update { it.copy(stage = ReadingStage.INTERPRETATION) }
+    }
+
+    /**
+     * Entry point the Interpret button calls. Gated on the
+     * "first-tap-prompt-shown" flag: the very first time anyone taps it,
+     * surface the install-offline-AI dialog instead of generating immediately.
+     * On every subsequent tap (and after the dialog is answered once), this
+     * just delegates to [goToInterpretation] + [requestInterpretation].
+     */
+    fun onInterpretTapped() {
+        if (_state.value.isInterpreting) return
+        viewModelScope.launch {
+            val ai = settingsRepository.ai.first()
+            if (!ai.interpretPromptShown) {
+                _state.update {
+                    it.copy(
+                        showFirstTapPrompt = true,
+                        firstTapDownloadBytes = modelInstaller.manifest.expectedBytes,
+                    )
+                }
+            } else {
+                beginInterpretation()
+            }
+        }
+    }
+
+    /** First-tap dialog: user picked "Install offline AI". */
+    fun onFirstTapInstall() {
+        viewModelScope.launch {
+            settingsRepository.setInterpretPromptShown(true)
+            settingsRepository.setAiBackend(AiBackendType.LOCAL_LLM)
+            // Kick off the download in the background; the user will see
+            // progress in Settings. THIS reading falls through to the
+            // rule-based interpreter via InterpreterRegistry's fallback,
+            // because the model isn't installed yet.
+            modelInstaller.install()
+            _state.update { it.copy(showFirstTapPrompt = false) }
+            beginInterpretation()
+        }
+    }
+
+    /** First-tap dialog: user picked "Not now". */
+    fun onFirstTapNotNow() {
+        viewModelScope.launch {
+            settingsRepository.setInterpretPromptShown(true)
+            _state.update { it.copy(showFirstTapPrompt = false) }
+            beginInterpretation()
+        }
+    }
+
+    /** Outside-tap / back-press on the dialog. Doesn't burn the flag — the user might tap Interpret again. */
+    fun onFirstTapDismissed() {
+        _state.update { it.copy(showFirstTapPrompt = false) }
+    }
+
+    private fun beginInterpretation() {
+        goToInterpretation()
+        requestInterpretation()
     }
 
     fun requestInterpretation() {
