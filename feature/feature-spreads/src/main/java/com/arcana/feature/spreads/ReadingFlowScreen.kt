@@ -263,7 +263,7 @@ private fun InterpretationStage(
                 drawnCards = state.drawn,
                 onCardClick = { card, _ -> onCardClick(card.id) },
                 showLabels = false,
-                cardWidthFraction = 0.13f,
+                cardSizeFraction = 0.16f,
             )
         }
         Card(
