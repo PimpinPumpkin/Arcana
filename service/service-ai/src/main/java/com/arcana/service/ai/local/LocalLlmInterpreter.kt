@@ -56,7 +56,7 @@ class LocalLlmInterpreter @Inject constructor(
             return@flow
         }
 
-        emit(InterpretationChunk.Status("Generating…"))
+        emit(InterpretationChunk.Status("Interpreting…"))
 
         val prompt = buildChatMlPrompt(
             system = PromptBuilder.SYSTEM_PROMPT,

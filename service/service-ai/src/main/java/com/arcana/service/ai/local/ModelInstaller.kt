@@ -2,6 +2,7 @@ package com.arcana.service.ai.local
 
 import android.content.Context
 import com.arcana.core.common.DispatcherProvider
+import com.arcana.core.domain.model.AiBackendType
 import com.arcana.core.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -253,6 +255,14 @@ class ModelInstaller @Inject constructor(
         }
 
         settingsRepository.setLocalModelInstalled(true)
+        // If the user just installed a model while on the rule-based fallback,
+        // they almost certainly want the AI now. Flip the backend so the next
+        // Interpret tap actually uses the model they just downloaded — no
+        // round-trip through Settings required.
+        val current = settingsRepository.ai.first()
+        if (current.backendType == AiBackendType.RULE_BASED) {
+            settingsRepository.setAiBackend(AiBackendType.LOCAL_LLM)
+        }
         _state.value = State.Installed(targetFile.length())
     }
 
