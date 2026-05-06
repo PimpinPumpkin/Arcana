@@ -21,4 +21,5 @@ interface SettingsRepository {
     suspend fun setAiBackend(type: com.arcana.core.domain.model.AiBackendType)
     suspend fun setClaudeApiKey(key: String)
     suspend fun setLocalModelInstalled(installed: Boolean)
+    suspend fun setInterpretPromptShown(shown: Boolean)
 }

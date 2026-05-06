@@ -12,4 +12,11 @@ data class AiSettings(
     val localModelInstalled: Boolean,
     val localModelId: String,
     val claudeModelId: String,
+    /**
+     * Whether we've already shown the user the first-tap "install offline AI?"
+     * prompt at least once. Flipped to true the first time the user makes a
+     * choice (either "install" or "not now") so the prompt doesn't keep
+     * appearing.
+     */
+    val interpretPromptShown: Boolean,
 )
