@@ -151,9 +151,16 @@ fun SettingsScreen(
                     sublabel = stringResource(R.string.settings_local_unavailable),
                 )
             }
+            items(state.availableModels, key = { it.id }) { model ->
+                ModelPickerRow(
+                    manifest = model,
+                    selected = state.activeModel.id == model.id,
+                    onSelect = { viewModel.selectLocalModel(model.id) },
+                )
+            }
             item {
                 LocalModelManager(
-                    manifest = state.localModel,
+                    manifest = state.activeModel,
                     state = state.installState,
                     onInstall = viewModel::installLocalModel,
                     onCancel = viewModel::cancelLocalInstall,
@@ -341,6 +348,40 @@ private fun BackendRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            RadioButton(selected = selected, onClick = onSelect)
+        }
+    }
+}
+
+@Composable
+private fun ModelPickerRow(
+    manifest: ModelManifest,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Card(
+        onClick = onSelect,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${manifest.displayName} · ${formatBytes(manifest.expectedBytes)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    manifest.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             RadioButton(selected = selected, onClick = onSelect)
         }

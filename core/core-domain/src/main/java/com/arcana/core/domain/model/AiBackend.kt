@@ -10,6 +10,7 @@ data class AiSettings(
     val backendType: AiBackendType,
     val claudeApiKey: String,
     val localModelInstalled: Boolean,
+    /** Which `ModelManifest.id` is currently active for the local backend. */
     val localModelId: String,
     val claudeModelId: String,
     /**

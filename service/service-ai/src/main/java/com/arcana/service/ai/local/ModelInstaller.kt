@@ -11,6 +11,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -70,11 +72,7 @@ class ModelInstaller @Inject constructor(
         UNKNOWN,    // catch-all
     }
 
-    val manifest: ModelManifest = ModelManifest.DEFAULT
-
     private val modelsDir: File = File(context.filesDir, "models").apply { mkdirs() }
-    private val targetFile: File = File(modelsDir, manifest.fileName)
-    private val partFile: File = File(modelsDir, "${manifest.fileName}.part")
 
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + dispatchers.io)
     private var downloadJob: Job? = null
@@ -84,67 +82,104 @@ class ModelInstaller @Inject constructor(
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    private val _state: MutableStateFlow<State> = MutableStateFlow(initialState())
+    /**
+     * Active manifest, derived from the user's selection in Settings. Changes
+     * here trigger a state recomputation (cancel any in-flight download for
+     * the previous manifest, look at the filesystem for the new manifest's
+     * file).
+     */
+    private val _manifest: MutableStateFlow<ModelManifest> = MutableStateFlow(ModelManifest.DEFAULT)
+    val manifest: StateFlow<ModelManifest> = _manifest.asStateFlow()
+
+    private val _state: MutableStateFlow<State> = MutableStateFlow(stateForFile(targetFileFor(ModelManifest.DEFAULT)))
     val state: StateFlow<State> = _state.asStateFlow()
 
-    /** Path to the installed weight file, or null if not installed. */
-    val modelFile: File? get() = targetFile.takeIf { it.exists() && it.length() > 0L }
+    init {
+        scope.launch {
+            settingsRepository.ai
+                .map { ModelManifest.byId(it.localModelId) }
+                .distinctUntilChangedBy { it.id }
+                .collect { newManifest ->
+                    if (newManifest.id != _manifest.value.id) {
+                        // Switching models: cancel any download for the
+                        // outgoing manifest and recompute state for the
+                        // incoming one based on what's already on disk.
+                        downloadJob?.cancel()
+                        _manifest.value = newManifest
+                        _state.value = stateForFile(targetFileFor(newManifest))
+                    }
+                }
+        }
+    }
 
-    private fun initialState(): State {
-        // Trust the filesystem: if a finalized file is present at the right
-        // size, treat it as installed without re-hashing on every app start.
-        // (Re-hashing 400 MB on cold start is too expensive.) The user can
-        // manually re-install if they suspect corruption.
-        return if (targetFile.exists() && targetFile.length() > 0L) {
-            State.Installed(targetFile.length())
+    /** Path to the active manifest's installed weight file, or null if not installed. */
+    val modelFile: File?
+        get() {
+            val f = targetFileFor(_manifest.value)
+            return f.takeIf { it.exists() && it.length() > 0L }
+        }
+
+    private fun targetFileFor(m: ModelManifest) = File(modelsDir, m.fileName)
+    private fun partFileFor(m: ModelManifest) = File(modelsDir, "${m.fileName}.part")
+
+    private fun stateForFile(target: File): State {
+        // Trust the filesystem: if a finalized file is present, treat it as
+        // installed without re-hashing on every app start. Re-hashing
+        // hundreds of MB on cold start is too expensive. Users can manually
+        // re-install if they suspect corruption.
+        return if (target.exists() && target.length() > 0L) {
+            State.Installed(target.length())
         } else {
             State.NotInstalled
         }
     }
 
-    /** Begin (or restart) a download. Idempotent if already downloading. */
+    /** Begin (or restart) a download for the currently-selected manifest. */
     fun install() {
         if (_state.value is State.Downloading) return
         downloadJob?.cancel()
+        // Snapshot the manifest at start so a mid-download switch can't
+        // confuse which file we're writing to.
+        val active = _manifest.value
         downloadJob = scope.launch {
             try {
-                runDownload()
+                runDownload(active)
             } catch (e: CancellationException) {
-                // Don't strand the .part eating disk if the user cancels.
-                partFile.delete()
+                partFileFor(active).delete()
                 _state.value = State.NotInstalled
                 throw e
             } catch (e: Throwable) {
-                // Free the partial download regardless of failure mode —
-                // a half-written file is just disk-pressure with no value.
-                partFile.delete()
+                partFileFor(active).delete()
                 val (kind, msg) = classify(e)
                 _state.value = State.Failed(kind, msg)
             }
         }
     }
 
-    /** Cancel an in-progress download. The .part file is preserved on disk. */
+    /** Cancel an in-progress download. */
     fun cancel() {
         downloadJob?.cancel()
-        // _state will fall back to NotInstalled in the catch block above.
     }
 
-    /** Delete the model file and any partial download. */
+    /** Delete the active model's file and any partial download. */
     fun uninstall() {
         downloadJob?.cancel()
-        partFile.delete()
-        targetFile.delete()
+        val active = _manifest.value
+        partFileFor(active).delete()
+        targetFileFor(active).delete()
         scope.launch { settingsRepository.setLocalModelInstalled(false) }
         _state.value = State.NotInstalled
     }
 
-    private suspend fun runDownload() {
+    private suspend fun runDownload(activeManifest: ModelManifest) {
+        val targetFile = targetFileFor(activeManifest)
+        val partFile = partFileFor(activeManifest)
+
         // Pre-flight: bail before downloading a single byte if there isn't
         // room. Without this, ENOSPC surfaces as a generic IOException
         // *partway* through the download — confusing UX (progress hits
         // 60%, then "failed").
-        val needed = manifest.expectedBytes + FREE_SPACE_HEADROOM_BYTES
+        val needed = activeManifest.expectedBytes + FREE_SPACE_HEADROOM_BYTES
         val available = context.filesDir.usableSpace
         if (available < needed) {
             throw DiskFullException(
@@ -156,7 +191,7 @@ class ModelInstaller @Inject constructor(
         partFile.delete()
 
         val request = Request.Builder()
-            .url(manifest.downloadUrl)
+            .url(activeManifest.downloadUrl)
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -164,7 +199,7 @@ class ModelInstaller @Inject constructor(
                 throw IOException("Download server returned HTTP ${response.code}")
             }
             val body = response.body ?: throw IOException("Empty response body")
-            val totalBytes = body.contentLength().takeIf { it > 0L } ?: manifest.expectedBytes
+            val totalBytes = body.contentLength().takeIf { it > 0L } ?: activeManifest.expectedBytes
             val digest = MessageDigest.getInstance("SHA-256")
 
             FileOutputStream(partFile).use { out ->
@@ -182,10 +217,8 @@ class ModelInstaller @Inject constructor(
                         digest.update(buf, 0, read)
                         bytesDone += read
 
-                        // Throttle state emissions: at most every ~256 KB
-                        // so we don't spam recompositions during a fast
-                        // download. UI feels smooth without firing 6000
-                        // updates for a 400 MB file.
+                        // Throttle state emissions to every ~256 KB so we
+                        // don't spam recompositions during a fast download.
                         if (bytesDone - lastEmittedBytes >= EMIT_INTERVAL_BYTES ||
                             bytesDone == totalBytes
                         ) {
@@ -202,18 +235,17 @@ class ModelInstaller @Inject constructor(
             }
 
             // Verify checksum if the manifest specifies one.
-            if (manifest.sha256.isNotBlank()) {
+            if (activeManifest.sha256.isNotBlank()) {
                 val computed = digest.digest().joinToString("") { "%02x".format(it) }
-                if (!computed.equals(manifest.sha256, ignoreCase = true)) {
+                if (!computed.equals(activeManifest.sha256, ignoreCase = true)) {
                     partFile.delete()
                     throw IOException(
-                        "Checksum mismatch: expected ${manifest.sha256.take(12)}…, " +
+                        "Checksum mismatch: expected ${activeManifest.sha256.take(12)}…, " +
                             "got ${computed.take(12)}…",
                     )
                 }
             }
 
-            // Atomic-ish: rename .part → final.
             if (!partFile.renameTo(targetFile)) {
                 partFile.delete()
                 throw IOException("Could not move downloaded file into place")
