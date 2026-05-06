@@ -32,6 +32,10 @@ class SaveReadingUseCase @Inject constructor(
             notes = notes,
             deckArtId = deckArtId,
             kind = kind,
+            // Snapshot the spread's positions so the journal entry stays
+            // self-contained: deleting or editing the underlying custom
+            // spread later doesn't corrupt this reading.
+            spreadSnapshot = spread.positions,
         )
         readingRepository.saveReading(reading)
         return id

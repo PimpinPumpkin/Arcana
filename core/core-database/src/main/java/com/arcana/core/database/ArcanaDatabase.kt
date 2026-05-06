@@ -16,7 +16,7 @@ import com.arcana.core.database.entity.ReadingEntity
         CustomSpreadEntity::class,
         CustomSpreadPositionEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class ArcanaDatabase : RoomDatabase() {
