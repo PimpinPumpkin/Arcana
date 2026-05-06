@@ -11,6 +11,7 @@ import androidx.navigation.navArgument
 import com.arcana.feature.journal.JournalDetailScreen
 import com.arcana.feature.journal.LogPhysicalReadingScreen
 import com.arcana.feature.library.CardDetailScreen
+import com.arcana.feature.spreads.CustomSpreadEditorScreen
 import com.arcana.feature.spreads.ReadingFlowScreen
 import com.arcana.feature.spreads.SpreadOverviewScreen
 import com.arcana.feature.spreads.SpreadPickerScreen
@@ -31,6 +32,23 @@ fun ArcanaNavHost(
                 onSpreadPicked = { navController.navigate(Routes.spreadOverview(it)) },
                 onJournalEntryClick = { navController.navigate(Routes.journalDetail(it)) },
                 onLogPhysicalReading = { navController.navigate(Routes.LOG_PHYSICAL_PICKER) },
+                onCreateCustomSpread = { navController.navigate(Routes.CUSTOM_SPREAD_NEW) },
+                onEditCustomSpread = { id -> navController.navigate(Routes.customSpreadEdit(id)) },
+            )
+        }
+        composable(Routes.CUSTOM_SPREAD_NEW) {
+            CustomSpreadEditorScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.CUSTOM_SPREAD_EDIT_PATTERN,
+            arguments = listOf(navArgument(Routes.ARG_SPREAD_ID) { type = NavType.StringType }),
+        ) {
+            CustomSpreadEditorScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
             )
         }
         composable(
