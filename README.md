@@ -52,7 +52,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties   # or hard-code the path
 
 APK lands at `app/build/outputs/apk/release/app-release.apk` (~44 MB after R8 + resource shrinking).
 
-The `release` buildType is signed with the debug keystore for personal-install convenience — `adb install` works on any device, no Play Store keystore needed yet. Swap in a real `signingConfig` in `app/build.gradle.kts` when shipping. Plain `./gradlew assembleDebug` still works if you ever want a non-minified build for profiling.
+The `release` buildType is signed with the debug keystore for personal-install convenience — `adb install` works on any device, no Play Store keystore needed yet. Swap in a real `signingConfig` in `app/build.gradle.kts` when shipping. Plain `./gradlew assembleDebug` still works if you ever want a non-minified build for profiling — but don't use it for everyday use, scrolling and navigation lag noticeably without R8 minification.
 
 ### Windows
 
