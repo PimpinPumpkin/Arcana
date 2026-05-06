@@ -27,11 +27,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -54,6 +59,20 @@ fun ReadingFlowScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val spread = state.spread
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isSaved = state.savedReadingId != null
+
+    val savedMessage = stringResource(R.string.spreads_saved_message)
+    val viewLabel = stringResource(R.string.spreads_saved_view)
+    LaunchedEffect(state.savedReadingId) {
+        val id = state.savedReadingId ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = savedMessage,
+            actionLabel = viewLabel,
+            withDismissAction = true,
+        )
+        if (result == SnackbarResult.ActionPerformed) onSaved(id)
+    }
 
     Scaffold(
         topBar = {
@@ -66,6 +85,7 @@ fun ReadingFlowScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         if (spread == null) {
             Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -92,6 +112,7 @@ fun ReadingFlowScreen(
                 ReadingStage.SHUFFLING -> ShufflingStage()
                 ReadingStage.REVEAL -> RevealStage(
                     state = state,
+                    isSaved = isSaved,
                     onCardClick = onCardClick,
                     onInterpret = {
                         viewModel.goToInterpretation()
@@ -103,6 +124,7 @@ fun ReadingFlowScreen(
                 )
                 ReadingStage.INTERPRETATION -> InterpretationStage(
                     state = state,
+                    isSaved = isSaved,
                     onCardClick = onCardClick,
                     onRetry = viewModel::requestInterpretation,
                     onSave = {
@@ -110,11 +132,6 @@ fun ReadingFlowScreen(
                     },
                 )
             }
-        }
-
-        // Notify on save
-        state.savedReadingId?.let { id ->
-            androidx.compose.runtime.LaunchedEffect(id) { onSaved(id) }
         }
     }
 }
@@ -207,6 +224,7 @@ private fun ShufflingStage() {
 @Composable
 private fun RevealStage(
     state: ReadingFlowUiState,
+    isSaved: Boolean,
     onCardClick: (String) -> Unit,
     onInterpret: () -> Unit,
     onSave: () -> Unit,
@@ -232,8 +250,12 @@ private fun RevealStage(
                 .padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(onClick = onSave, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.spreads_save))
+            OutlinedButton(
+                onClick = onSave,
+                enabled = !isSaved,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(if (isSaved) R.string.spreads_save_done else R.string.spreads_save))
             }
             Button(onClick = onInterpret, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.spreads_interpret))
@@ -245,6 +267,7 @@ private fun RevealStage(
 @Composable
 private fun InterpretationStage(
     state: ReadingFlowUiState,
+    isSaved: Boolean,
     onCardClick: (String) -> Unit,
     onRetry: () -> Unit,
     onSave: () -> Unit,
@@ -312,8 +335,12 @@ private fun InterpretationStage(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.spreads_save))
+            Button(
+                onClick = onSave,
+                enabled = !isSaved,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(if (isSaved) R.string.spreads_save_done else R.string.spreads_save))
             }
         }
     }

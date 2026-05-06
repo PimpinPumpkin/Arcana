@@ -33,12 +33,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,9 +68,19 @@ fun LogPhysicalReadingScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val spread = state.spread
     val deck = state.deck
+    val isSaved = state.savedReadingId != null
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    state.savedReadingId?.let { id ->
-        LaunchedEffect(id) { onSaved(id) }
+    val savedMessage = stringResource(R.string.journal_saved_message)
+    val viewLabel = stringResource(R.string.journal_saved_view)
+    LaunchedEffect(state.savedReadingId) {
+        val id = state.savedReadingId ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = savedMessage,
+            actionLabel = viewLabel,
+            withDismissAction = true,
+        )
+        if (result == SnackbarResult.ActionPerformed) onSaved(id)
     }
 
     Scaffold(
@@ -79,6 +94,7 @@ fun LogPhysicalReadingScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         if (spread == null || deck == null) {
             Box(
@@ -148,7 +164,7 @@ fun LogPhysicalReadingScreen(
             item {
                 Button(
                     onClick = { viewModel.save() },
-                    enabled = viewModel.isComplete && !state.isSaving,
+                    enabled = viewModel.isComplete && !state.isSaving && !isSaved,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
@@ -156,7 +172,11 @@ fun LogPhysicalReadingScreen(
                     val filled = state.selections.size
                     val total = spread.cardCount
                     Text(
-                        if (viewModel.isComplete) "Save reading" else "Save reading ($filled / $total filled)",
+                        when {
+                            isSaved -> stringResource(R.string.journal_save_done)
+                            viewModel.isComplete -> "Save reading"
+                            else -> "Save reading ($filled / $total filled)"
+                        },
                     )
                 }
             }

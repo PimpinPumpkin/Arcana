@@ -64,7 +64,11 @@ fun ArcanaNavHost(
             ReadingFlowScreen(
                 onBack = { navController.popBackStack() },
                 onCardClick = { navController.navigate(Routes.cardDetail(it)) },
-                onSaved = { /* stay on screen so user can read interpretation */ },
+                onSaved = { readingId ->
+                    navController.navigate(Routes.journalDetail(readingId)) {
+                        popUpTo(Routes.MAIN)
+                    }
+                },
             )
         }
         composable(Routes.LOG_PHYSICAL_PICKER) {

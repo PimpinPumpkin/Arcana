@@ -26,6 +26,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcana.core.domain.model.Card
 import com.arcana.core.ui.components.TarotCardView
+import com.arcana.core.ui.components.ZoomableCardImage
 import com.arcana.core.ui.theme.ArcanaColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,10 +77,26 @@ fun CardDetailScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            var fullscreenOpen by remember { mutableStateOf(false) }
             Box(
                 modifier = Modifier.width(220.dp),
             ) {
-                state.deck?.let { TarotCardView(card = card, deck = it) }
+                state.deck?.let {
+                    TarotCardView(
+                        card = card,
+                        deck = it,
+                        onClick = { fullscreenOpen = true },
+                    )
+                }
+            }
+            if (fullscreenOpen) {
+                state.deck?.let {
+                    ZoomableCardImage(
+                        card = card,
+                        deck = it,
+                        onDismiss = { fullscreenOpen = false },
+                    )
+                }
             }
             Text(
                 text = card.arcana.displayLabel,
