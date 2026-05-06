@@ -1,6 +1,6 @@
 # Arcana
 
-A Material 3 Expressive tarot reference and divination companion for Android. Built with Jetpack Compose, multi-module clean architecture, and a pluggable AI interpreter.
+The most obvious vibe-coded esoteric app around. Whimsical and odd. A Material 3 Expressive tarot reference and divination companion for Android. Built with Jetpack Compose, multi-module clean architecture, and a pluggable AI interpreter.
 
 ## Features
 
