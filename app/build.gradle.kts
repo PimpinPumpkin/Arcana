@@ -26,6 +26,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Sign with the debug keystore so personal builds install on any
+            // device via adb without needing a real release keystore yet. When
+            // shipping to Play Store, replace this with a real signingConfig.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
