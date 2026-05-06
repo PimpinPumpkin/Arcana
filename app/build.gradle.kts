@@ -14,8 +14,8 @@ android {
         applicationId = "com.arcana.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -43,6 +43,16 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // Force the AGP-default `extractNativeLibs=false` off. We need
+            // the .so files extracted to a real filesystem path at install
+            // time, because llama.cpp's ggml_backend_load_all_from_path
+            // uses opendir() to enumerate the CPU-variant backends. With
+            // extraction off, nativeLibraryDir resolves to an APK-internal
+            // virtual path that opendir can't walk, no backends load, and
+            // model load fails with "no compatible backend".
+            useLegacyPackaging = true
         }
     }
 }
