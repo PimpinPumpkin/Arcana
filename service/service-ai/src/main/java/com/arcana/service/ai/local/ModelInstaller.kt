@@ -148,12 +148,22 @@ class ModelInstaller @Inject constructor(
                 runDownload(active)
             } catch (e: CancellationException) {
                 partFileFor(active).delete()
-                _state.value = State.NotInstalled
+                // Only reset state if the user is still on the same manifest.
+                // If they switched mid-download, the manifest collector has
+                // already pointed _state at the new manifest's actual file
+                // state — overwriting that with NotInstalled would clobber
+                // it (e.g. claiming the new manifest isn't installed when
+                // its file is right there on disk).
+                if (_manifest.value.id == active.id) {
+                    _state.value = State.NotInstalled
+                }
                 throw e
             } catch (e: Throwable) {
                 partFileFor(active).delete()
-                val (kind, msg) = classify(e)
-                _state.value = State.Failed(kind, msg)
+                if (_manifest.value.id == active.id) {
+                    val (kind, msg) = classify(e)
+                    _state.value = State.Failed(kind, msg)
+                }
             }
         }
     }

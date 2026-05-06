@@ -34,6 +34,9 @@ enum class ReadingStage { QUESTION, SHUFFLING, REVEAL, INTERPRETATION }
 data class ReadingFlowUiState(
     val spread: Spread? = null,
     val deck: DeckArt? = null,
+    /** True if [SpreadRepository.getSpreadById] returned null on init —
+     *  e.g. user followed a stale deep-link to a deleted custom spread. */
+    val spreadNotFound: Boolean = false,
     val stage: ReadingStage = ReadingStage.QUESTION,
     val question: String = "",
     val allowReversed: Boolean = true,
@@ -48,6 +51,13 @@ data class ReadingFlowUiState(
     val showFirstTapPrompt: Boolean = false,
     /** Bytes to display in the dialog; cached from [ModelManifest]. */
     val firstTapDownloadBytes: Long = ModelManifest.DEFAULT.expectedBytes,
+    /**
+     * Set when the chosen AI backend wasn't available and we fell through
+     * to rule-based for this generation. Lets the screen surface a small
+     * banner so the user understands why the prose isn't from their
+     * chosen backend. Cleared by [requestInterpretation] on every new run.
+     */
+    val backendFallbackNotice: String? = null,
 )
 
 @HiltViewModel
@@ -86,6 +96,10 @@ class ReadingFlowViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val spread = spreadRepository.getSpreadById(spreadId)
+            if (spread == null) {
+                _state.update { it.copy(spreadNotFound = true) }
+                return@launch
+            }
             val appearance = settingsRepository.appearance.first()
             val deck = settingsRepository.getAvailableDecks().firstOrNull { it.id == appearance.deckArtId }
                 ?: settingsRepository.getAvailableDecks().firstOrNull()
@@ -183,7 +197,22 @@ class ReadingFlowViewModel @Inject constructor(
                     interpretationStatus = null,
                 )
             }
+            val ai = settingsRepository.ai.first()
             val interpreter = interpreterRegistry.activeInterpreter()
+            // The registry silently falls back to RULE_BASED when the user's
+            // chosen backend is unavailable. That's the right default but
+            // can be confusing — surface a one-shot notice so the user
+            // knows why their reading just came out as rule-based prose.
+            val notice = when {
+                ai.backendType == AiBackendType.LOCAL_LLM &&
+                    interpreter.type == AiBackendType.RULE_BASED ->
+                    "Local AI not installed yet — using rule-based interpretation. Install from Settings → AI Interpreter."
+                ai.backendType == AiBackendType.CLAUDE_API &&
+                    interpreter.type == AiBackendType.RULE_BASED ->
+                    "Add a Claude API key in Settings to use the cloud backend. Falling back to rule-based for this reading."
+                else -> null
+            }
+            _state.update { it.copy(backendFallbackNotice = notice) }
             val request = InterpretationRequest(
                 spread = spread,
                 drawnCards = current.drawn,
