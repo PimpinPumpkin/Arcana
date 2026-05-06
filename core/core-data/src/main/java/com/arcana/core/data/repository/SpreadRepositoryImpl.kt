@@ -15,7 +15,9 @@ import com.arcana.core.domain.repository.SpreadRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -45,14 +47,26 @@ class SpreadRepositoryImpl @Inject constructor(
      * Combined Flow: bundled JSON spreads + Room-backed custom spreads,
      * sorted by the user's spread-order list (with anything missing appended
      * in default order).
+     *
+     * The `flow { ensureLoaded(); emitAll(...) }` wrapper is load-bearing:
+     * `bundledCache` starts as `emptyList()` and is only populated inside
+     * `ensureLoaded()`. Without this priming step the Flow would emit an
+     * empty bundled set on first collection — which v0.4.0 shipped with,
+     * causing the picker to show only the "Create custom" entry plus any
+     * user-authored spreads.
      */
-    override fun observeAllSpreads(): Flow<List<Spread>> = combine(
-        bundledCache,
-        customSpreadDao.observeAll(),
-        settingsRepository.spreadOrder,
-    ) { bundled, customRows, order ->
-        val customSpreads = customRows.map { it.toDomain() }
-        applyUserOrder(bundled + customSpreads, order)
+    override fun observeAllSpreads(): Flow<List<Spread>> = flow {
+        ensureLoaded()
+        emitAll(
+            combine(
+                bundledCache,
+                customSpreadDao.observeAll(),
+                settingsRepository.spreadOrder,
+            ) { bundled, customRows, order ->
+                val customSpreads = customRows.map { it.toDomain() }
+                applyUserOrder(bundled + customSpreads, order)
+            }
+        )
     }
 
     override suspend fun getAllSpreads(): List<Spread> {
