@@ -9,6 +9,8 @@ import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.ThemeMode
 import com.arcana.core.domain.model.ThemePreset
 import com.arcana.core.domain.repository.SettingsRepository
+import com.arcana.service.ai.local.ModelInstaller
+import com.arcana.service.ai.local.ModelManifest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,23 +25,29 @@ data class SettingsUiState(
     val themes: List<ThemePreset> = emptyList(),
     val decks: List<DeckArt> = emptyList(),
     val apiKeyDraft: String = "",
+    val localModel: ModelManifest = ModelManifest.DEFAULT,
+    val installState: ModelInstaller.State = ModelInstaller.State.NotInstalled,
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
+    private val modelInstaller: ModelInstaller,
 ) : ViewModel() {
 
     val state: StateFlow<SettingsUiState> = combine(
         settingsRepository.appearance,
         settingsRepository.ai,
-    ) { appearance, ai ->
+        modelInstaller.state,
+    ) { appearance, ai, installState ->
         SettingsUiState(
             appearance = appearance,
             ai = ai,
             themes = settingsRepository.getAvailableThemes(),
             decks = settingsRepository.getAvailableDecks(),
             apiKeyDraft = ai.claudeApiKey,
+            localModel = modelInstaller.manifest,
+            installState = installState,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -49,4 +57,8 @@ class SettingsViewModel @Inject constructor(
     fun setDeck(id: String) = viewModelScope.launch { settingsRepository.setDeckArtId(id) }
     fun setBackend(type: AiBackendType) = viewModelScope.launch { settingsRepository.setAiBackend(type) }
     fun saveApiKey(key: String) = viewModelScope.launch { settingsRepository.setClaudeApiKey(key.trim()) }
+
+    fun installLocalModel() = modelInstaller.install()
+    fun cancelLocalInstall() = modelInstaller.cancel()
+    fun uninstallLocalModel() = modelInstaller.uninstall()
 }

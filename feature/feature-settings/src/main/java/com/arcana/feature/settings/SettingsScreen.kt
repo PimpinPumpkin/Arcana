@@ -21,7 +21,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -50,6 +52,8 @@ import com.arcana.core.domain.model.AiBackendType
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.ThemeMode
 import com.arcana.core.domain.model.ThemePreset
+import com.arcana.service.ai.local.ModelInstaller
+import com.arcana.service.ai.local.ModelManifest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,6 +149,15 @@ fun SettingsScreen(
                     selected = ai.backendType == AiBackendType.LOCAL_LLM,
                     onSelect = { viewModel.setBackend(AiBackendType.LOCAL_LLM) },
                     sublabel = stringResource(R.string.settings_local_unavailable),
+                )
+            }
+            item {
+                LocalModelManager(
+                    manifest = state.localModel,
+                    state = state.installState,
+                    onInstall = viewModel::installLocalModel,
+                    onCancel = viewModel::cancelLocalInstall,
+                    onRemove = viewModel::uninstallLocalModel,
                 )
             }
             item {
@@ -332,6 +345,124 @@ private fun BackendRow(
             RadioButton(selected = selected, onClick = onSelect)
         }
     }
+}
+
+@Composable
+private fun LocalModelManager(
+    manifest: ModelManifest,
+    state: ModelInstaller.State,
+    onInstall: () -> Unit,
+    onCancel: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(
+                manifest.displayName,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                manifest.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+
+            val statusText = when (state) {
+                is ModelInstaller.State.NotInstalled -> stringResource(
+                    R.string.settings_local_status_not_installed,
+                    manifest.displayName,
+                    formatBytes(manifest.expectedBytes),
+                )
+                is ModelInstaller.State.Downloading -> stringResource(
+                    R.string.settings_local_status_downloading,
+                    (state.progress * 100).toInt().coerceIn(0, 100),
+                    formatBytes(state.bytesDone),
+                    formatBytes(state.totalBytes),
+                )
+                is ModelInstaller.State.Installed -> stringResource(
+                    R.string.settings_local_status_installed,
+                    formatBytes(state.sizeBytes),
+                )
+                is ModelInstaller.State.Failed -> stringResource(
+                    R.string.settings_local_status_failed,
+                    state.message,
+                )
+            }
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+
+            if (state is ModelInstaller.State.Downloading) {
+                LinearProgressIndicator(
+                    progress = { state.progress.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                when (state) {
+                    is ModelInstaller.State.NotInstalled -> {
+                        Button(
+                            onClick = onInstall,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(stringResource(R.string.settings_local_install))
+                        }
+                    }
+                    is ModelInstaller.State.Downloading -> {
+                        OutlinedButton(
+                            onClick = onCancel,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(stringResource(R.string.settings_local_cancel))
+                        }
+                    }
+                    is ModelInstaller.State.Installed -> {
+                        OutlinedButton(
+                            onClick = onRemove,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(stringResource(R.string.settings_local_remove))
+                        }
+                    }
+                    is ModelInstaller.State.Failed -> {
+                        Button(
+                            onClick = onInstall,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(stringResource(R.string.settings_local_retry))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val units = listOf("KB", "MB", "GB")
+    var value = bytes.toDouble() / 1024.0
+    var unitIdx = 0
+    while (value >= 1024.0 && unitIdx < units.size - 1) {
+        value /= 1024.0
+        unitIdx++
+    }
+    return "%.1f %s".format(value, units[unitIdx])
 }
 
 @Composable
