@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.arcana.core.domain.model.Card
 import com.arcana.core.domain.model.DeckArt
@@ -80,6 +81,13 @@ fun TarotCardView(
                         .data(DeckAssetResolver.fileUri(deck, card))
                         .crossfade(false)
                         .memoryCacheKey("arcana-${deck.id}-${card.id}")
+                        // The asset already lives on disk inside the APK — Coil
+                        // disk-caching it again is redundant IO that can stutter
+                        // first-frame.
+                        .diskCachePolicy(CachePolicy.DISABLED)
+                        // Tarot art tolerates RGB_565 fine; halves bitmap memory
+                        // and decode cost.
+                        .allowRgb565(true)
                         .build()
                 }
                 AsyncImage(

@@ -131,9 +131,23 @@ class LogPhysicalReadingViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Cards available to assign to the currently-open position. Excludes any card
+     * already assigned to a *different* position — you can't pull the same card
+     * twice from a real deck. The card currently in the open position (if any) is
+     * still allowed, so re-opening the picker doesn't hide your existing pick.
+     */
     fun filteredCards(): List<Card> {
-        val q = _state.value.pickerQuery
-        val all = _state.value.allCards
-        return if (q.isBlank()) all else all.filter { it.matchesQuery(q) }
+        val current = _state.value
+        val openPos = current.pickerForPosition
+        val usedElsewhereIds: Set<String> = current.selections
+            .asSequence()
+            .filter { it.key != openPos }
+            .map { it.value.card.id }
+            .toSet()
+
+        val available = current.allCards.filter { it.id !in usedElsewhereIds }
+        val q = current.pickerQuery
+        return if (q.isBlank()) available else available.filter { it.matchesQuery(q) }
     }
 }

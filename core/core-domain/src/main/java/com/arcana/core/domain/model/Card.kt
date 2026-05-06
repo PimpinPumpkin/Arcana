@@ -21,22 +21,49 @@ data class Card(
         if (query.isBlank()) return true
         val q = query.trim().lowercase()
 
-        // Numeric search: "5" should match Five of Wands, Hierophant (V), etc.
-        // Word search: "five" should match the same.
-        val numericMatch: Boolean = when (val a = arcana) {
+        // Numeric/exact-rank match: "5", "v", "five" → match this card if it's a Five.
+        // Cheap path tried first.
+        val exactRankMatch: Boolean = when (val a = arcana) {
             is Arcana.Major -> q == a.number.toString() ||
                 q == romanNumeralLower(a.number)
             is Arcana.Minor -> q == a.rank.numericValue.toString() ||
-                a.rank.displayName.lowercase() == q ||
-                a.rank.displayName.lowercase().startsWith(q)
+                a.rank.displayName.lowercase() == q
         }
-        if (numericMatch) return true
+        if (exactRankMatch) return true
 
-        return name.lowercase().contains(q) ||
-            keywordsUpright.any { it.lowercase().contains(q) } ||
-            keywordsReversed.any { it.lowercase().contains(q) } ||
-            uprightMeaning.lowercase().contains(q) ||
-            reversedMeaning.lowercase().contains(q)
+        // Then substring search across the regular text fields AND a synthetic
+        // "5 of cups" form so multi-word queries with digits work
+        // (e.g. "5 of cups", "viii of swords", "ii hierophant").
+        val haystack = searchHaystack
+        return haystack.contains(q)
+    }
+
+    /**
+     * Lowercased, space-joined bag of words this card should match. Built once per
+     * card instance; cheap because Card is a stable data class held in a singleton
+     * cache (CardRepositoryImpl).
+     */
+    private val searchHaystack: String by lazy {
+        buildString {
+            append(name.lowercase())
+            append(' ')
+            // Synthetic numeric and roman forms of the name — so "5 of cups" finds
+            // Five of Cups and "xvi tower" finds The Tower.
+            when (val a = arcana) {
+                is Arcana.Major -> {
+                    append(a.number).append(' ')
+                    append(romanNumeralLower(a.number)).append(' ')
+                }
+                is Arcana.Minor -> {
+                    append(a.rank.numericValue).append(" of ").append(a.suit.displayName.lowercase()).append(' ')
+                    append(romanNumeralLower(a.rank.numericValue)).append(" of ").append(a.suit.displayName.lowercase()).append(' ')
+                }
+            }
+            keywordsUpright.forEach { append(it.lowercase()).append(' ') }
+            keywordsReversed.forEach { append(it.lowercase()).append(' ') }
+            append(uprightMeaning.lowercase()).append(' ')
+            append(reversedMeaning.lowercase())
+        }
     }
 
     private fun romanNumeralLower(n: Int): String = when (n) {
