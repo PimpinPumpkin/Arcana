@@ -47,17 +47,20 @@ service/
 git clone https://github.com/PimpinPumpkin/Arcana.git
 cd Arcana
 echo "sdk.dir=$ANDROID_HOME" > local.properties   # or hard-code the path
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
-APK lands at `app/build/outputs/apk/debug/app-debug.apk` (~62 MB with bundled art).
+APK lands at `app/build/outputs/apk/release/app-release.apk` (~44 MB after R8 + resource shrinking).
+
+The `release` buildType is signed with the debug keystore for personal-install convenience — `adb install` works on any device, no Play Store keystore needed yet. Swap in a real `signingConfig` in `app/build.gradle.kts` when shipping. Plain `./gradlew assembleDebug` still works if you ever want a non-minified build for profiling.
 
 ### Windows
 
-Plain `./gradlew assembleDebug` works on most setups. On Windows ARM with Defender enabled, the transform cache hits a file-handle race that causes spurious `Could not move temporary workspace` failures. If you see that, use the bundled recovery wrapper:
+Plain `./gradlew assembleRelease` works on most setups. On Windows ARM with Defender enabled, the transform cache hits a file-handle race that causes spurious `Could not move temporary workspace` failures. If you see that, use the bundled recovery wrapper:
 
 ```bash
-bash build-with-recovery.sh
+bash build-with-recovery.sh           # defaults to assembleRelease
+bash build-with-recovery.sh assembleDebug   # if you want debug instead
 ```
 
 It retries up to 15 times and rescues stuck temp workspaces with PowerShell between attempts. Keep it as a fallback only — it's strictly a workaround for the Defender issue.
