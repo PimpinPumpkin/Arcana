@@ -85,7 +85,13 @@ class LlamaEngine @Inject constructor(
         if (handle == 0L) throw IllegalStateException("LlamaEngine: no model loaded")
 
         val rc = LlamaBridge.nativeStartGeneration(handle, prompt, maxTokens)
-        if (rc != 0) throw IOException("LlamaEngine: nativeStartGeneration failed (rc=$rc)")
+        if (rc != 0) {
+            val message = when (rc) {
+                -5 -> "This spread is too large for the local model's context window. Try a smaller spread or use Claude."
+                else -> "Local model couldn't start generation (rc=$rc)."
+            }
+            throw IOException(message)
+        }
 
         try {
             while (currentCoroutineContext().isActive) {
@@ -109,10 +115,13 @@ class LlamaEngine @Inject constructor(
     }
 
     companion object {
-        // 2048 is plenty of context for our system + user prompt + a single
-        // multi-paragraph reading. Bumping to 4096 doubles RAM use without
-        // changing the answer.
-        private const val DEFAULT_N_CTX = 2048
+        // 2048 was tight for big spreads — Celtic Cross prompts ~1300 tokens
+        // (system + 10 cards) and our 800-token generation budget pushed
+        // total context use to ~2100, which crashed llama.cpp on some
+        // devices. 4096 leaves comfortable headroom for the largest custom
+        // spreads (4×6 grid = up to 24 positions) at the cost of ~300 MB
+        // extra KV-cache memory on the 0.5B model.
+        private const val DEFAULT_N_CTX = 4096
         // Tarot interpretations don't run longer than ~600 tokens in
         // practice; cap at 800 for safety so a runaway loop can't burn a
         // user's battery indefinitely.
