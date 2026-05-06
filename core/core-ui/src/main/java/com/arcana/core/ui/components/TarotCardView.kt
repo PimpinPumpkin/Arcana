@@ -70,7 +70,15 @@ fun TarotCardView(
             .shadow(8.dp, CardShapes.tarotCard)
             .clip(CardShapes.tarotCard)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, CardShapes.tarotCard)
+            // Reversed cards get a thick red outline so they're spottable
+            // at a glance even at the small sizes that show up in dense
+            // spreads (Celtic Cross, Year Ahead). Border lives on the outer
+            // box, so it doesn't rotate with the art.
+            .border(
+                width = if (isReversed) 2.5.dp else 1.dp,
+                color = if (isReversed) ArcanaColors.ReversedRibbon else MaterialTheme.colorScheme.outline,
+                shape = CardShapes.tarotCard,
+            )
             .let {
                 if (onClick != null) it.clickable {
                     tapCounter++
@@ -192,7 +200,7 @@ private fun ReversedRibbon() {
     ) {
         Box(
             modifier = Modifier
-                .size(20.dp)
+                .size(26.dp)
                 .shadow(2.dp, CircleShape)
                 .clip(CircleShape)
                 .background(ArcanaColors.ReversedRibbon),
@@ -202,7 +210,7 @@ private fun ReversedRibbon() {
                 imageVector = Icons.Default.ArrowDownward,
                 contentDescription = "Reversed",
                 tint = Color.White,
-                modifier = Modifier.size(14.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
