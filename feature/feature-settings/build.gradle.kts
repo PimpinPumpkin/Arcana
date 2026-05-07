@@ -26,6 +26,10 @@ dependencies {
     implementation(project(":service:service-ai"))
 
     implementation(libs.androidx.core.ktx)
+    // For SAF folder/file pickers used by the deck importer.
+    implementation(libs.androidx.activity.compose)
+    // Image rendering for the per-card editor grid.
+    implementation(libs.coil.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(platform(libs.androidx.compose.bom))

@@ -9,6 +9,8 @@
     <string name="settings_theme_mode_dark">Dark</string>
     <string name="settings_dynamic">Use Material You wallpaper colors</string>
     <string name="settings_deck">Card deck</string>
+    <string name="settings_manage_decks">Manage decks (import / edit / delete)</string>
+    <string name="settings_manage_decks_hint">Bulk-import a folder of card images, or fine-tune a custom deck card-by-card.</string>
     <string name="settings_ai">AI Interpreter</string>
     <string name="settings_ai_backend">Backend</string>
     <string name="settings_ai_local">Local LLM (offline)</string>
