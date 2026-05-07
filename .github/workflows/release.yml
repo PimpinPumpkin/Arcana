@@ -37,7 +37,27 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Decode release keystore
+        # If the secret isn't configured (e.g. someone forks the repo) we
+        # silently skip — app/build.gradle.kts falls back to the debug
+        # keystore in that case.
+        env:
+          KEYSTORE_B64: ${{ secrets.ARCANA_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/arcana-release.jks"
+            echo "Decoded keystore to $RUNNER_TEMP/arcana-release.jks ($(stat -c%s "$RUNNER_TEMP/arcana-release.jks") bytes)"
+          else
+            echo "No release keystore secret set — falling back to debug signing."
+          fi
+
       - name: Build release APK
+        env:
+          # Picked up by signingConfigs.releaseFromEnv in app/build.gradle.kts.
+          # Empty when no keystore was decoded; gradle then falls back to debug.
+          ARCANA_KEYSTORE_PATH: ${{ runner.temp }}/arcana-release.jks
+          ARCANA_KEYSTORE_PASSWORD: ${{ secrets.ARCANA_KEYSTORE_PASSWORD }}
+          ARCANA_KEY_ALIAS: ${{ secrets.ARCANA_KEY_ALIAS }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Stage APK with version-tagged name

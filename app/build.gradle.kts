@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,11 +16,30 @@ android {
         applicationId = "com.arcana.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.5.4"
+        versionCode = 12
+        versionName = "0.5.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // Real release signingConfig, populated from env vars set by CI:
+    //   ARCANA_KEYSTORE_PATH       — absolute path to a decoded .jks file
+    //   ARCANA_KEYSTORE_PASSWORD   — store password (also used as key password)
+    //   ARCANA_KEY_ALIAS           — alias inside the keystore (defaults to "arcana")
+    // When those aren't set (local dev), we fall back to the debug keystore
+    // below — local builds still work, they're just signed with a different,
+    // per-machine cert (which is fine for `adb install` during development).
+    signingConfigs {
+        create("releaseFromEnv") {
+            val path = System.getenv("ARCANA_KEYSTORE_PATH")
+            if (!path.isNullOrBlank() && File(path).exists()) {
+                storeFile = File(path)
+                storePassword = System.getenv("ARCANA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ARCANA_KEY_ALIAS") ?: "arcana"
+                keyPassword = System.getenv("ARCANA_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,10 +47,15 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Sign with the debug keystore so personal builds install on any
-            // device via adb without needing a real release keystore yet. When
-            // shipping to Play Store, replace this with a real signingConfig.
-            signingConfig = signingConfigs.getByName("debug")
+            val envSigning = signingConfigs.getByName("releaseFromEnv")
+            signingConfig = if (envSigning.storeFile?.exists() == true) {
+                envSigning
+            } else {
+                // Local dev path: per-machine debug keystore. The Obtainium
+                // upgrade conflict only matters between releases that *both*
+                // come from CI, so this fallback is fine for development.
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
