@@ -149,16 +149,16 @@ class ReadingFlowViewModel @Inject constructor(
         }
     }
 
-    /** First-tap dialog: user picked "Install offline AI". */
-    fun onFirstTapInstall() {
+    /** First-tap dialog: user picked a specific model to install. */
+    fun onFirstTapInstall(manifest: ModelManifest) {
         viewModelScope.launch {
             settingsRepository.setInterpretPromptShown(true)
             settingsRepository.setAiBackend(AiBackendType.LOCAL_LLM)
-            // Kick off the download in the background; the user will see
-            // progress in Settings. THIS reading falls through to the
-            // rule-based interpreter via InterpreterRegistry's fallback,
-            // because the model isn't installed yet.
-            modelInstaller.install()
+            // Kick off the download in the background. THIS reading falls
+            // through to the rule-based interpreter via InterpreterRegistry's
+            // fallback because the model isn't installed yet; the install
+            // banner shows progress while it downloads.
+            modelInstaller.installModel(manifest)
             _state.update { it.copy(showFirstTapPrompt = false) }
             beginInterpretation()
         }

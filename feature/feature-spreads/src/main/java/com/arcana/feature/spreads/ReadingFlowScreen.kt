@@ -65,6 +65,7 @@ import com.arcana.core.ui.components.ShuffleAnimation
 import com.arcana.core.ui.components.SpreadBoard
 import com.arcana.service.ai.InterpretationTone
 import com.arcana.service.ai.local.ModelInstaller
+import com.arcana.service.ai.local.ModelManifest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -190,7 +191,7 @@ fun ReadingFlowScreen(
 
         if (state.showFirstTapPrompt) {
             FirstTapInstallDialog(
-                downloadBytes = state.firstTapDownloadBytes,
+                options = ModelManifest.ALL,
                 onInstall = viewModel::onFirstTapInstall,
                 onNotNow = viewModel::onFirstTapNotNow,
                 onDismiss = viewModel::onFirstTapDismissed,
@@ -201,23 +202,41 @@ fun ReadingFlowScreen(
 
 @Composable
 private fun FirstTapInstallDialog(
-    downloadBytes: Long,
-    onInstall: () -> Unit,
+    options: List<ModelManifest>,
+    onInstall: (ModelManifest) -> Unit,
     onNotNow: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sizeLabel = remember(downloadBytes) { formatBytes(downloadBytes) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.spreads_first_install_title)) },
         text = {
-            Text(stringResource(R.string.spreads_first_install_body, sizeLabel))
-        },
-        confirmButton = {
-            TextButton(onClick = onInstall) {
-                Text(stringResource(R.string.spreads_first_install_yes, sizeLabel))
+            Column {
+                Text(stringResource(R.string.spreads_first_install_body))
+                Spacer(modifier = Modifier.height(12.dp))
+                options.forEach { model ->
+                    Button(
+                        onClick = { onInstall(model) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "${model.displayName} · ${formatBytes(model.expectedBytes)}",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = model.description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                            )
+                        }
+                    }
+                }
             }
         },
+        confirmButton = {},
         dismissButton = {
             TextButton(onClick = onNotNow) {
                 Text(stringResource(R.string.spreads_first_install_no))
@@ -418,6 +437,8 @@ private fun RevealStage(
                 deck = deck,
                 drawnCards = state.drawn,
                 onCardClick = { card, _ -> onCardClick(card.id) },
+                showLabels = true,
+                cardSizeFraction = 0.24f,
             )
         }
         Row(
@@ -520,20 +541,23 @@ private fun InterpretationStage(
                         // Re-interpret action shows up only once a generation
                         // has completed (or paused) — useful when the small
                         // model produces wonky output and you want another roll.
+                        // Promoted to a full-width filled Button so it carries
+                        // the same visual weight as Interpret/Save and isn't
+                        // hidden in a corner.
                         if (!state.isInterpreting && state.interpretationError == null) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
+                            Button(
+                                onClick = onRetry,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
                             ) {
-                                TextButton(onClick = onRetry) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(stringResource(R.string.spreads_reinterpret))
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.spreads_reinterpret))
                             }
                         }
 

@@ -106,23 +106,31 @@ private fun PositionedCard(
             .zIndex(position.index.toFloat()),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .width(cardWidth)
-                    .graphicsLayer { rotationZ = position.coords.rotationDegrees },
-            ) {
-                if (drawn != null) {
-                    TarotCardView(
-                        card = drawn.card,
-                        deck = deck,
-                        orientation = drawn.orientation,
-                        onClick = onClick,
-                    )
-                } else {
-                    CardBackView()
+            // Stack the rotated card art with an UNROTATED badge layer so
+            // the position number stays readable when the card is at 90°/180°
+            // and doesn't sit on top of the corner reversed-arrow badge
+            // (which lives at TopStart inside TarotCardView).
+            Box(modifier = Modifier.width(cardWidth)) {
+                Box(
+                    modifier = Modifier
+                        .width(cardWidth)
+                        .graphicsLayer { rotationZ = position.coords.rotationDegrees },
+                ) {
+                    if (drawn != null) {
+                        TarotCardView(
+                            card = drawn.card,
+                            deck = deck,
+                            orientation = drawn.orientation,
+                            onClick = onClick,
+                        )
+                    } else {
+                        CardBackView()
+                    }
                 }
                 if (showNumber) {
-                    PositionNumberBadge(position.index)
+                    Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                        PositionNumberBadge(position.index)
+                    }
                 }
             }
             if (showLabel) {

@@ -136,6 +136,24 @@ class ModelInstaller @Inject constructor(
         }
     }
 
+    /**
+     * Switch the active manifest to [manifest] and immediately install it.
+     * Lets the first-tap dialog (and any future "tap install on this card"
+     * UI) request a specific size atomically — without this, callers that
+     * `setLocalModelId` then `install()` race the manifest collector and
+     * can end up installing the previous selection.
+     */
+    fun installModel(manifest: ModelManifest) {
+        scope.launch {
+            settingsRepository.setLocalModelId(manifest.id)
+            // Force the in-memory manifest update synchronously so the
+            // immediate install() call below targets the right file.
+            _manifest.value = manifest
+            _state.value = stateForFile(targetFileFor(manifest))
+            install()
+        }
+    }
+
     /** Begin (or restart) a download for the currently-selected manifest. */
     fun install() {
         if (_state.value is State.Downloading) return
