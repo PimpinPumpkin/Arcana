@@ -49,4 +49,7 @@ object Routes {
     fun editDeck(deckId: String) = "$EDIT_DECK/$deckId"
     const val EDIT_DECK_PATTERN = "$EDIT_DECK/{deckId}"
     const val ARG_DECK_ID = "deckId"
+
+    /** Backup & restore (export / import custom spreads + saved readings). */
+    const val BACKUP = "backup"
 }
