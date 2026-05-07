@@ -3,21 +3,29 @@ package com.arcana.feature.journal
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -105,13 +113,93 @@ fun JournalDetailScreen(
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            reading.interpretation?.takeIf { it.isNotBlank() }?.let {
+
+            // Live-streaming AI interpretation (Generate / Re-interpret).
+            // While a generation is running, show the in-progress text in
+            // place of any prior persisted interpretation. When complete,
+            // ViewModel persists and clears the draft so the regular
+            // markdown display below takes over again.
+            state.backendFallbackNotice?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            state.interpretationStatus?.let {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.5.dp,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            val displayInterpretation = state.interpretationDraft?.takeIf { it.isNotBlank() }
+                ?: reading.interpretation?.takeIf { it.isNotBlank() }
+            displayInterpretation?.let {
                 MarkdownText(
                     text = it,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             }
+            state.interpretationError?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            // Show the action button:
+            //  - Generate (filled) when there's no interpretation yet
+            //  - Re-interpret (outlined) when one already exists
+            //  - Cancel (outlined) while generating
+            val hasInterpretation = !reading.interpretation.isNullOrBlank()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                when {
+                    state.isInterpreting -> {
+                        OutlinedButton(
+                            onClick = viewModel::cancelInterpretation,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.journal_cancel_interpret)) }
+                    }
+                    hasInterpretation -> {
+                        OutlinedButton(
+                            onClick = viewModel::requestInterpretation,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.journal_reinterpret))
+                        }
+                    }
+                    else -> {
+                        Button(
+                            onClick = viewModel::requestInterpretation,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.journal_generate_interpret))
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             OutlinedTextField(
                 value = state.notesDraft,
                 onValueChange = viewModel::onNotesChange,
