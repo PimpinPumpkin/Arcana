@@ -61,6 +61,13 @@ fun SpreadBoard(
         val baseDp = min(parentW.value, parentH.value).dp
         val cardWidth = baseDp * cardSizeFraction
         val cardHeight = cardWidth / CARD_ASPECT
+
+        // Two passes so labels can always sit on top of every card. With a
+        // single-pass render (label inside each PositionedCard), Celtic
+        // Cross's stacked + rotated positions occluded their neighbors'
+        // labels. Now: cards drawn first at their natural zIndex, then
+        // labels drawn on a high-zIndex top layer so they're never hidden
+        // by another card's body.
         spread.positions.forEach { position ->
             val drawn = drawnCards?.firstOrNull { it.positionIndex == position.index }
             PositionedCard(
@@ -74,9 +81,19 @@ fun SpreadBoard(
                 onClick = if (drawn != null && onCardClick != null) {
                     { onCardClick(drawn.card, position.index) }
                 } else null,
-                showLabel = showLabels,
                 showNumber = showPositionNumbers,
             )
+        }
+        if (showLabels) {
+            spread.positions.forEach { position ->
+                PositionedLabel(
+                    position = position,
+                    cardWidth = cardWidth,
+                    cardHeight = cardHeight,
+                    parentWidth = parentW,
+                    parentHeight = parentH,
+                )
+            }
         }
     }
 }
@@ -91,7 +108,6 @@ private fun PositionedCard(
     parentWidth: androidx.compose.ui.unit.Dp,
     parentHeight: androidx.compose.ui.unit.Dp,
     onClick: (() -> Unit)?,
-    showLabel: Boolean,
     showNumber: Boolean,
 ) {
     val centerX = parentWidth * position.coords.x
@@ -105,49 +121,85 @@ private fun PositionedCard(
             .width(cardWidth)
             .zIndex(position.index.toFloat()),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Stack the rotated card art with an UNROTATED badge layer so
-            // the position number stays readable when the card is at 90°/180°
-            // and doesn't sit on top of the corner reversed-arrow badge
-            // (which lives at TopStart inside TarotCardView).
-            Box(modifier = Modifier.width(cardWidth)) {
-                Box(
-                    modifier = Modifier
-                        .width(cardWidth)
-                        .graphicsLayer { rotationZ = position.coords.rotationDegrees },
-                ) {
-                    if (drawn != null) {
-                        TarotCardView(
-                            card = drawn.card,
-                            deck = deck,
-                            orientation = drawn.orientation,
-                            onClick = onClick,
-                        )
-                    } else {
-                        CardBackView()
-                    }
-                }
-                if (showNumber) {
-                    Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                        PositionNumberBadge(position.index)
-                    }
+        // Stack the rotated card art with an UNROTATED badge layer so
+        // the position number stays readable when the card is at 90°/180°
+        // and doesn't sit on top of the corner reversed-arrow badge
+        // (which lives at TopStart inside TarotCardView).
+        Box(modifier = Modifier.width(cardWidth)) {
+            Box(
+                modifier = Modifier
+                    .width(cardWidth)
+                    .graphicsLayer { rotationZ = position.coords.rotationDegrees },
+            ) {
+                if (drawn != null) {
+                    TarotCardView(
+                        card = drawn.card,
+                        deck = deck,
+                        orientation = drawn.orientation,
+                        onClick = onClick,
+                    )
+                } else {
+                    CardBackView()
                 }
             }
-            if (showLabel) {
-                Text(
-                    text = position.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
+            if (showNumber) {
+                Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                    PositionNumberBadge(position.index)
+                }
             }
         }
     }
 }
+
+/**
+ * Position label drawn on a top zIndex layer so it's never occluded by
+ * another card's body. Sits just below the card's nominal box (the
+ * label slot from the old single-pass renderer) — the position is the
+ * same as before, only the layering differs.
+ */
+@Composable
+private fun PositionedLabel(
+    position: Position,
+    cardWidth: androidx.compose.ui.unit.Dp,
+    cardHeight: androidx.compose.ui.unit.Dp,
+    parentWidth: androidx.compose.ui.unit.Dp,
+    parentHeight: androidx.compose.ui.unit.Dp,
+) {
+    val centerX = parentWidth * position.coords.x
+    val centerY = parentHeight * position.coords.y
+    val offsetX = centerX - cardWidth / 2
+    // 4dp gap mirrors the old Column { card; padding(top=4); label }
+    // layout — labels sit at the same screen coordinate as before.
+    val offsetY = centerY + cardHeight / 2 + 2.dp
+
+    Box(
+        modifier = Modifier
+            .offset(x = offsetX, y = offsetY)
+            .width(cardWidth)
+            // Above any card's natural index. Labels never get occluded.
+            .zIndex(LABEL_Z),
+    ) {
+        Text(
+            text = position.label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                // Subtle pill background so labels stay readable when they
+                // happen to land on top of another card's art (Celtic
+                // Cross's stacked positions).
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                )
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+        )
+    }
+}
+
+private const val LABEL_Z = 10_000f
 
 @Composable
 private fun PositionNumberBadge(index: Int) {
