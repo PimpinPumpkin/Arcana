@@ -62,7 +62,19 @@ data class Card(
             keywordsUpright.forEach { append(it.lowercase()).append(' ') }
             keywordsReversed.forEach { append(it.lowercase()).append(' ') }
             append(uprightMeaning.lowercase()).append(' ')
-            append(reversedMeaning.lowercase())
+            append(reversedMeaning.lowercase()).append(' ')
+            // Tag-style fields: element, astrology, numerology, suit, arcana
+            // tier. Lets searches like "fire", "aries", "saturn", "wands",
+            // "major" land on the right cards.
+            element?.displayName?.let { append(it.lowercase()).append(' ') }
+            astrology?.let { append(it.lowercase()).append(' ') }
+            numerology?.let { append(it.lowercase()).append(' ') }
+            (arcana as? Arcana.Minor)?.suit?.displayName?.let { append(it.lowercase()).append(' ') }
+            append(if (isMajor) "major" else "minor").append(' ')
+            // The card's long-form description rounds out the haystack so
+            // searches against thematic phrases (e.g. "new beginnings",
+            // "shadow") find related cards.
+            append(description.lowercase())
         }
     }
 
