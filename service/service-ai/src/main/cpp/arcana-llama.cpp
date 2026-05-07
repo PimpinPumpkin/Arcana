@@ -188,11 +188,26 @@ Java_com_arcana_service_ai_local_LlamaBridge_nativeStartGeneration(
         return -3;
     }
 
-    llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
-    if (llama_decode(session->ctx, batch) != 0) {
-        ARCANA_LOGE("llama_decode: prompt prefill failed");
-        return -4;
+    // Feed the prompt through llama_decode in n_batch-sized chunks rather
+    // than one giant batch. llama.cpp is supposed to handle the split
+    // internally when batch.size > n_batch, but on Android we've seen
+    // hard native crashes mid-decode for prompts well under n_ctx —
+    // splitting ourselves dodges that path entirely. Each chunk gets its
+    // own llama_batch_get_one with positions auto-tracked.
+    constexpr int32_t PROMPT_CHUNK = 256;
+    int32_t fed = 0;
+    while (fed < n_needed) {
+        const int32_t chunk = std::min<int32_t>(PROMPT_CHUNK, n_needed - fed);
+        ARCANA_LOGI("llama_decode: chunk [%d, %d) of %d", fed, fed + chunk, n_needed);
+        llama_batch batch = llama_batch_get_one(tokens.data() + fed, chunk);
+        const int32_t rc = llama_decode(session->ctx, batch);
+        if (rc != 0) {
+            ARCANA_LOGE("llama_decode: prompt chunk at %d failed (rc=%d)", fed, rc);
+            return -4;
+        }
+        fed += chunk;
     }
+    ARCANA_LOGI("Prompt prefill done.");
 
     session->n_decoded   = 0;
     session->n_max       = max_tokens > 0 ? max_tokens : 512;
