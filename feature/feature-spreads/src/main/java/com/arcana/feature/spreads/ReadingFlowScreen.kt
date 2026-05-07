@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -31,6 +32,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -44,10 +46,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +70,7 @@ import com.arcana.core.ui.components.SpreadBoard
 import com.arcana.service.ai.InterpretationTone
 import com.arcana.service.ai.local.ModelInstaller
 import com.arcana.service.ai.local.ModelManifest
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -563,9 +568,28 @@ private fun InterpretationStage(
 
                         // Scrollable interpretation body, with an explicit
                         // scrollbar overlay (Compose's default verticalScroll
-                        // doesn't show one).
+                        // doesn't show one), auto-scroll-to-bottom while
+                        // streaming, and a "jump to latest" FAB if the user
+                        // has scrolled up away from the live tokens.
                         val scrollState = rememberScrollState()
                         val scrollbarColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val coroutineScope = rememberCoroutineScope()
+                        // ~50px of slack so we treat "almost at bottom" as
+                        // "at bottom" — otherwise auto-scroll fails to catch
+                        // the very last token's newline + padding.
+                        val isNearBottom by remember {
+                            derivedStateOf {
+                                scrollState.maxValue == 0 ||
+                                    scrollState.value >= scrollState.maxValue - 50
+                            }
+                        }
+                        // Auto-stick to the bottom while text is streaming in,
+                        // but only if the user hasn't manually scrolled up.
+                        LaunchedEffect(state.interpretation) {
+                            if (isNearBottom) {
+                                scrollState.scrollTo(scrollState.maxValue)
+                            }
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -598,6 +622,26 @@ private fun InterpretationStage(
                                         topLeft = Offset(0f, thumbY),
                                         size = Size(size.width, thumbHeight),
                                         cornerRadius = CornerRadius(size.width / 2f),
+                                    )
+                                }
+                            }
+                            // Jump-to-latest FAB: surfaces while generation
+                            // is live AND the user has scrolled up. Tap to
+                            // animate back to the streaming tail.
+                            if (state.isInterpreting && !isNearBottom) {
+                                SmallFloatingActionButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            scrollState.animateScrollTo(scrollState.maxValue)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(8.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = stringResource(R.string.spreads_jump_to_latest),
                                     )
                                 }
                             }

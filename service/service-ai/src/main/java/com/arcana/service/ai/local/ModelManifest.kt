@@ -26,8 +26,8 @@ data class ModelManifest(
          */
         val QWEN_2_5_0_5B_INSTRUCT = ModelManifest(
             id = "qwen2.5-0.5b-instruct-q4_k_m",
-            displayName = "Qwen 2.5 0.5B (small)",
-            description = "Fastest. Weaker prose, occasional repetition. Best for older / budget phones.",
+            displayName = "Small",
+            description = "Fastest. Weaker prose, occasional repetition. Best for older / budget phones. (Qwen 2.5 0.5B Instruct, Q4)",
             downloadUrl = "https://github.com/PimpinPumpkin/Arcana/releases/download/" +
                 "models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf",
             fileName = "qwen2.5-0.5b-instruct-q4_k_m.gguf",
@@ -43,8 +43,8 @@ data class ModelManifest(
          */
         val QWEN_2_5_1_5B_INSTRUCT = ModelManifest(
             id = "qwen2.5-1.5b-instruct-q4_k_m",
-            displayName = "Qwen 2.5 1.5B (medium)",
-            description = "Better prose, more coherent multi-paragraph readings. Recommended for flagships from the last few years.",
+            displayName = "Medium",
+            description = "Better prose, more coherent multi-paragraph readings. Recommended for flagships from the last few years. (Qwen 2.5 1.5B Instruct, Q4)",
             downloadUrl = "https://github.com/PimpinPumpkin/Arcana/releases/download/" +
                 "models-v1/qwen2.5-1.5b-instruct-q4_k_m.gguf",
             fileName = "qwen2.5-1.5b-instruct-q4_k_m.gguf",

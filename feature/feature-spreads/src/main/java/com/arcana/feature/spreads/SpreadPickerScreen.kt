@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -63,6 +64,7 @@ fun SpreadPickerScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var spreadPendingDelete by remember { mutableStateOf<Spread?>(null) }
+    var spreadInfoOpen by remember { mutableStateOf<Spread?>(null) }
 
     // Local mutable copy of the order so drag swaps can run live without
     // a roundtrip through DataStore. We commit to the repo on drag-end.
@@ -181,12 +183,21 @@ fun SpreadPickerScreen(
                         isCustom = spread.id in state.customIds,
                         showAffordances = canCustomize,
                         onClick = { onPickSpread(spread.id) },
+                        onInfo = { spreadInfoOpen = spread },
                         onEdit = { onEditCustom?.invoke(spread.id) },
                         onDelete = { spreadPendingDelete = spread },
                     )
                 }
             }
         }
+    }
+
+    spreadInfoOpen?.let { spread ->
+        SpreadInfoDialog(
+            spread = spread,
+            isCustom = spread.id in state.customIds,
+            onDismiss = { spreadInfoOpen = null },
+        )
     }
 
     spreadPendingDelete?.let { spread ->
@@ -207,6 +218,76 @@ fun SpreadPickerScreen(
             },
         )
     }
+}
+
+/**
+ * Static info about a spread — useful when the user wants to know what a
+ * spread *is* without picking it. Intentionally separate from the AI
+ * interpretation surface: that's about the cards drawn; this is about the
+ * spread template itself. For bundled spreads this is the curated
+ * description from spreads.json; custom spreads show whatever the user
+ * wrote when creating it.
+ */
+@Composable
+private fun SpreadInfoDialog(
+    spread: Spread,
+    isCustom: Boolean,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(spread.name) },
+        text = {
+            Column {
+                Text(
+                    text = if (spread.description.isNotBlank()) {
+                        spread.description
+                    } else if (isCustom) {
+                        "No description provided for this custom spread."
+                    } else {
+                        ""
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.spreads_info_meta,
+                        spread.cardCount,
+                        spread.difficulty.displayName,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                if (spread.positions.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.spreads_info_positions),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    )
+                    spread.positions.sortedBy { it.index }.forEach { pos ->
+                        Text(
+                            text = "${pos.index}. ${pos.label}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        if (pos.meaning.isNotBlank()) {
+                            Text(
+                                text = pos.meaning,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 14.dp, bottom = 4.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.spreads_info_close)) }
+        },
+    )
 }
 
 @Composable
@@ -252,6 +333,7 @@ private fun SpreadCard(
     isCustom: Boolean,
     showAffordances: Boolean,
     onClick: () -> Unit,
+    onInfo: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -285,6 +367,12 @@ private fun SpreadCard(
                             modifier = Modifier.padding(top = 4.dp),
                         )
                     }
+                }
+                IconButton(onClick = onInfo) {
+                    Icon(
+                        Icons.Outlined.Info,
+                        contentDescription = stringResource(R.string.spreads_info),
+                    )
                 }
                 if (showAffordances) {
                     IconButton(onClick = onEdit) {

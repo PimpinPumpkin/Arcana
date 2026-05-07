@@ -4,6 +4,10 @@
     <string name="spreads_pick_one">Pick a spread</string>
     <string name="spreads_reorder_hint">Long-press and drag to reorder.</string>
     <string name="spreads_drag_handle">Drag to reorder</string>
+    <string name="spreads_info">About this spread</string>
+    <string name="spreads_info_close">Close</string>
+    <string name="spreads_info_meta">%1$d cards · %2$s</string>
+    <string name="spreads_info_positions">Positions</string>
     <string name="spreads_create_custom">Create a custom spread</string>
     <string name="spreads_create_custom_hint">Choose how many cards, where each goes, and what each position means.</string>
     <string name="spreads_question_label">Your question (optional)</string>
@@ -22,6 +26,7 @@
     <string name="spreads_allow_reversed">Allow reversed cards</string>
     <string name="spreads_tone">Tone</string>
     <string name="spreads_reinterpret">Re-interpret</string>
+    <string name="spreads_jump_to_latest">Jump to latest</string>
     <string name="spreads_try_again">Try again</string>
     <string name="spreads_install_progress">Installing offline AI… %1$d%% (%2$s of %3$s)</string>
     <string name="spreads_install_failed">Offline AI install failed: %1$s</string>
