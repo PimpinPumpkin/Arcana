@@ -19,8 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -63,6 +66,21 @@ fun ManageDecksScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var importDialogOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
+
+    val zipImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) viewModel.importZip(uri) }
+
+    val zipExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri != null) viewModel.completeExport(uri) else viewModel.cancelExport()
+    }
+    // When the VM enters pendingExport state, kick off the SAF picker.
+    LaunchedEffect(state.pendingExport?.id) {
+        val deck = state.pendingExport ?: return@LaunchedEffect
+        zipExportLauncher.launch(viewModel.suggestedExportName(deck))
+    }
 
     Scaffold(
         topBar = {
@@ -120,6 +138,38 @@ fun ManageDecksScreen(
                     }
                 }
             }
+            item {
+                Card(
+                    onClick = { zipImportLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "*/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Unarchive, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Column(modifier = Modifier.padding(start = 12.dp)) {
+                            Text(
+                                "Import a deck from a ZIP",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Text(
+                                "Pick an Arcana deck export (.zip). Always lands as a fresh deck.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                            )
+                        }
+                    }
+                }
+            }
             items(state.decks, key = { it.id }) { deck ->
                 DeckRow(
                     deck = deck,
@@ -127,6 +177,7 @@ fun ManageDecksScreen(
                     onSelect = { viewModel.setActive(deck.id) },
                     onEdit = if (!deck.isBundled) { -> onEditDeck(deck.id) } else null,
                     onDelete = if (!deck.isBundled) { -> viewModel.requestDelete(deck) } else null,
+                    onExportZip = if (!deck.isBundled) { -> viewModel.beginExport(deck) } else null,
                 )
             }
         }
@@ -208,6 +259,17 @@ fun ManageDecksScreen(
             )
         }
 
+        state.exportSuccess?.let { msg ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissExportSuccess,
+                title = { Text("Deck exported") },
+                text = { Text("$msg Hand the .zip to anyone with Arcana — they can pull it in via \"Import a deck from a ZIP\".") },
+                confirmButton = {
+                    TextButton(onClick = viewModel::dismissExportSuccess) { Text("Done") }
+                },
+            )
+        }
+
         if (helpOpen) {
             HelpDialog(onDismiss = { helpOpen = false })
         }
@@ -221,6 +283,7 @@ private fun DeckRow(
     onSelect: () -> Unit,
     onEdit: (() -> Unit)?,
     onDelete: (() -> Unit)?,
+    onExportZip: (() -> Unit)?,
 ) {
     Card(
         onClick = onSelect,
@@ -253,6 +316,11 @@ private fun DeckRow(
                             )
                         },
                     )
+                }
+            }
+            if (onExportZip != null) {
+                IconButton(onClick = onExportZip) {
+                    Icon(Icons.Default.FileDownload, contentDescription = "Export deck as ZIP")
                 }
             }
             if (onEdit != null) {
@@ -392,7 +460,18 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "After a deck is imported (or any time later), tap the pencil icon next to the deck row to open the per-card editor. Tap any individual card to replace just that card's image — useful for fixing one or two cards in an otherwise-good import without touching the rest.",
+                    "After a deck is imported (or any time later), tap the pencil icon next to a CUSTOM deck row to open the per-card editor. Tap any individual card to replace just that card's image — useful for fixing one or two cards in an otherwise-good import without touching the rest. The pencil only appears for custom decks; bundled decks (e.g. Rider-Waite) are read-only.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                )
+                Text(
+                    "Share / move decks with ZIP",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "The download icon next to a custom deck packs its manifest + every card image into a single .zip you can save anywhere. Hand the .zip to anyone with Arcana — they tap \"Import a deck from a ZIP\" and pick the file. ZIP imports always land as fresh decks (won't overwrite anything you have).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
