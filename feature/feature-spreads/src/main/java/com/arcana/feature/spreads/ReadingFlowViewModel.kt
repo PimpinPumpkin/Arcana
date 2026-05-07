@@ -136,7 +136,15 @@ class ReadingFlowViewModel @Inject constructor(
         if (_state.value.isInterpreting) return
         viewModelScope.launch {
             val ai = settingsRepository.ai.first()
-            if (!ai.interpretPromptShown) {
+            // Skip the first-tap install dialog when:
+            //  - the user already saw it once and made a choice, OR
+            //  - a local model is already installed (e.g. user installed
+            //    via Settings → Manage decks before tapping Interpret —
+            //    promoting them to install AGAIN would be confusing).
+            // Also flip the flag in the second case so the dialog never
+            // resurfaces in a future session.
+            val alreadyInstalled = modelInstaller.modelFile != null
+            if (!ai.interpretPromptShown && !alreadyInstalled) {
                 _state.update {
                     it.copy(
                         showFirstTapPrompt = true,
@@ -144,6 +152,9 @@ class ReadingFlowViewModel @Inject constructor(
                     )
                 }
             } else {
+                if (!ai.interpretPromptShown && alreadyInstalled) {
+                    settingsRepository.setInterpretPromptShown(true)
+                }
                 beginInterpretation()
             }
         }

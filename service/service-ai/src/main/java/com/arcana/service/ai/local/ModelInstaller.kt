@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -78,6 +79,15 @@ class ModelInstaller @Inject constructor(
 
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + dispatchers.io)
     private var downloadJob: Job? = null
+    /**
+     * The in-flight HTTP call, captured so [cancel] can abort it directly.
+     * Coroutine cancellation alone won't unblock OkHttp's read — the only
+     * reliable way to interrupt a download is to call [Call.cancel] on the
+     * server-side handle, which makes the byteStream() read throw and lets
+     * the catch block run.
+     */
+    @Volatile
+    private var currentCall: Call? = null
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -165,6 +175,7 @@ class ModelInstaller @Inject constructor(
             try {
                 runDownload(active)
             } catch (e: CancellationException) {
+                currentCall = null
                 partFileFor(active).delete()
                 // Only reset state if the user is still on the same manifest.
                 // If they switched mid-download, the manifest collector has
@@ -177,10 +188,18 @@ class ModelInstaller @Inject constructor(
                 }
                 throw e
             } catch (e: Throwable) {
+                currentCall = null
                 partFileFor(active).delete()
                 if (_manifest.value.id == active.id) {
-                    val (kind, msg) = classify(e)
-                    _state.value = State.Failed(kind, msg)
+                    // OkHttp's user-cancel path throws IOException("Canceled"),
+                    // not a CancellationException, so it'd otherwise be
+                    // surfaced as a UNKNOWN error. Treat it as cancel.
+                    if (e is IOException && e.message?.contains("Canceled", ignoreCase = true) == true) {
+                        _state.value = State.NotInstalled
+                    } else {
+                        val (kind, msg) = classify(e)
+                        _state.value = State.Failed(kind, msg)
+                    }
                 }
             }
         }
@@ -188,6 +207,10 @@ class ModelInstaller @Inject constructor(
 
     /** Cancel an in-progress download. */
     fun cancel() {
+        // Cancel the OkHttp call first — that's the load-bearing step.
+        // Coroutine cancellation alone doesn't unblock the blocking
+        // byteStream().read() the worker is parked in.
+        currentCall?.cancel()
         downloadJob?.cancel()
     }
 
@@ -224,7 +247,8 @@ class ModelInstaller @Inject constructor(
             .url(activeManifest.downloadUrl)
             .build()
 
-        client.newCall(request).execute().use { response ->
+        val call = client.newCall(request).also { currentCall = it }
+        call.execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("Download server returned HTTP ${response.code}")
             }
@@ -281,6 +305,7 @@ class ModelInstaller @Inject constructor(
                 throw IOException("Could not move downloaded file into place")
             }
         }
+        currentCall = null
 
         settingsRepository.setLocalModelInstalled(true)
         // If the user just installed a model while on the rule-based fallback,
