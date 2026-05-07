@@ -11,6 +11,8 @@ import androidx.navigation.navArgument
 import com.arcana.feature.journal.JournalDetailScreen
 import com.arcana.feature.journal.LogPhysicalReadingScreen
 import com.arcana.feature.library.CardDetailScreen
+import com.arcana.feature.settings.EditDeckScreen
+import com.arcana.feature.settings.ManageDecksScreen
 import com.arcana.feature.spreads.CustomSpreadEditorScreen
 import com.arcana.feature.spreads.ReadingFlowScreen
 import com.arcana.feature.spreads.SpreadOverviewScreen
@@ -34,6 +36,21 @@ fun ArcanaNavHost(
                 onLogPhysicalReading = { navController.navigate(Routes.LOG_PHYSICAL_PICKER) },
                 onCreateCustomSpread = { navController.navigate(Routes.CUSTOM_SPREAD_NEW) },
                 onEditCustomSpread = { id -> navController.navigate(Routes.customSpreadEdit(id)) },
+                onManageDecks = { navController.navigate(Routes.MANAGE_DECKS) },
+            )
+        }
+        composable(Routes.MANAGE_DECKS) {
+            ManageDecksScreen(
+                onBack = { navController.popBackStack() },
+                onEditDeck = { id -> navController.navigate(Routes.editDeck(id)) },
+            )
+        }
+        composable(
+            route = Routes.EDIT_DECK_PATTERN,
+            arguments = listOf(navArgument(Routes.ARG_DECK_ID) { type = NavType.StringType }),
+        ) {
+            EditDeckScreen(
+                onBack = { navController.popBackStack() },
             )
         }
         composable(Routes.CUSTOM_SPREAD_NEW) {

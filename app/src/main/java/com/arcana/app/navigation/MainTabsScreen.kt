@@ -40,6 +40,7 @@ fun MainTabsScreen(
     onLogPhysicalReading: () -> Unit,
     onCreateCustomSpread: () -> Unit,
     onEditCustomSpread: (spreadId: String) -> Unit,
+    onManageDecks: () -> Unit,
 ) {
     val tabs = listOf(
         Tab(Routes.LIBRARY, "Library", Icons.Default.MenuBook),
@@ -94,7 +95,7 @@ fun MainTabsScreen(
                     onLogPhysicalReading = onLogPhysicalReading,
                 )
             }
-            composable(Routes.SETTINGS) { SettingsScreen() }
+            composable(Routes.SETTINGS) { SettingsScreen(onManageDecks = onManageDecks) }
         }
     }
 }

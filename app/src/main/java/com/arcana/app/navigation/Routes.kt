@@ -40,4 +40,13 @@ object Routes {
     const val CUSTOM_SPREAD_EDIT = "customSpreadEdit"
     fun customSpreadEdit(spreadId: String) = "$CUSTOM_SPREAD_EDIT/$spreadId"
     const val CUSTOM_SPREAD_EDIT_PATTERN = "$CUSTOM_SPREAD_EDIT/{spreadId}"
+
+    /** Manage decks (list + import + delete). Reachable from Settings → Manage decks. */
+    const val MANAGE_DECKS = "manageDecks"
+
+    /** Per-card editor for one custom deck. spreadId-style required arg. */
+    const val EDIT_DECK = "editDeck"
+    fun editDeck(deckId: String) = "$EDIT_DECK/$deckId"
+    const val EDIT_DECK_PATTERN = "$EDIT_DECK/{deckId}"
+    const val ARG_DECK_ID = "deckId"
 }
