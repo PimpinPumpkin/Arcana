@@ -11,6 +11,7 @@ import androidx.navigation.navArgument
 import com.arcana.feature.journal.JournalDetailScreen
 import com.arcana.feature.journal.LogPhysicalReadingScreen
 import com.arcana.feature.library.CardDetailScreen
+import com.arcana.feature.settings.BackupScreen
 import com.arcana.feature.settings.EditDeckScreen
 import com.arcana.feature.settings.ManageDecksScreen
 import com.arcana.feature.spreads.CustomSpreadEditorScreen
@@ -37,7 +38,11 @@ fun ArcanaNavHost(
                 onCreateCustomSpread = { navController.navigate(Routes.CUSTOM_SPREAD_NEW) },
                 onEditCustomSpread = { id -> navController.navigate(Routes.customSpreadEdit(id)) },
                 onManageDecks = { navController.navigate(Routes.MANAGE_DECKS) },
+                onBackupRestore = { navController.navigate(Routes.BACKUP) },
             )
+        }
+        composable(Routes.BACKUP) {
+            BackupScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.MANAGE_DECKS) {
             ManageDecksScreen(

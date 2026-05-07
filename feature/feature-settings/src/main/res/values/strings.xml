@@ -29,6 +29,9 @@
     <string name="settings_local_status_installed">Installed (%1$s on disk)</string>
     <string name="settings_local_status_failed">Install failed: %1$s</string>
     <string name="settings_local_unavailable">Inference runtime not wired yet — install only stages the model file. Generation arrives in the next release.</string>
+    <string name="settings_backup_section">Backup</string>
+    <string name="settings_backup">Backup &amp; restore</string>
+    <string name="settings_backup_hint">Export your custom spreads + saved readings, or import from a previous export.</string>
     <string name="settings_about">About</string>
     <string name="settings_about_text">Arcana — a tarot companion. All card meanings ship offline. The Claude integration is optional and opt-in.</string>
 </resources>

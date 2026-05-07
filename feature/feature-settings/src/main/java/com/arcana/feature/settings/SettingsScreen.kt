@@ -59,6 +59,7 @@ import com.arcana.service.ai.local.ModelManifest
 @Composable
 fun SettingsScreen(
     onManageDecks: (() -> Unit)? = null,
+    onBackupRestore: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -214,6 +215,43 @@ fun SettingsScreen(
                     initial = ai.claudeApiKey,
                     onSave = viewModel::saveApiKey,
                 )
+            }
+
+            if (onBackupRestore != null) {
+                item { HorizontalDivider() }
+                item { SectionLabel(stringResource(R.string.settings_backup_section)) }
+                item {
+                    Card(
+                        onClick = onBackupRestore,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.settings_backup),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    stringResource(R.string.settings_backup_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                "→",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
 
             item { HorizontalDivider() }
