@@ -149,6 +149,15 @@ Java_com_arcana_service_ai_local_LlamaBridge_nativeStartGeneration(
     ARCANA_LOGI("nativeStartGeneration: prompt %zu chars, n_ctx=%d, max_tokens=%d",
                 prompt.size(), n_ctx, max_tokens);
 
+    // Wipe per-generation state. Without this, the KV cache from prior
+    // generations stays in place and new prompt tokens append on top —
+    // running a 3-card reading then a 10-card reading would push the
+    // accumulated sequence past n_ctx and crash inside llama_decode on
+    // some Android builds. Reset the sampler too so its randomness
+    // history doesn't bleed across what should be independent readings.
+    llama_memory_clear(llama_get_memory(session->ctx), /*data=*/true);
+    llama_sampler_reset(session->sampler);
+
     // First call with a 0-sized buffer returns the negated token count we
     // need to allocate. (Standard llama_tokenize idiom.)
     const int32_t n_needed = -llama_tokenize(
