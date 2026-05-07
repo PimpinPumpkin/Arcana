@@ -122,9 +122,10 @@ class LlamaEngine @Inject constructor(
         // spreads (4×6 grid = up to 24 positions) at the cost of ~300 MB
         // extra KV-cache memory on the 0.5B model.
         private const val DEFAULT_N_CTX = 4096
-        // Tarot interpretations don't run longer than ~600 tokens in
-        // practice; cap at 800 for safety so a runaway loop can't burn a
-        // user's battery indefinitely.
-        private const val DEFAULT_MAX_TOKENS = 800
+        // 1024 tokens covers a 10-card Celtic Cross at the new brevity
+        // budget (2–3 sentences/card ≈ 50 tokens, plus overview/closing/
+        // headings ≈ 200 tokens). 800 was getting truncated mid-generation
+        // on big spreads, leaving the last few cards uncovered.
+        private const val DEFAULT_MAX_TOKENS = 1024
     }
 }
