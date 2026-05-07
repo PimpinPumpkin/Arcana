@@ -25,6 +25,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.datastore.preferences)
+    // SAF document tree access for the deck importer (folder picker scan).
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 }

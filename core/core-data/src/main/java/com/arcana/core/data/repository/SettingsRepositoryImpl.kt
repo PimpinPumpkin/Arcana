@@ -23,6 +23,7 @@ private val Context.settingsDataStore by preferencesDataStore("arcana_settings")
 @Singleton
 class SettingsRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val customDeckStore: CustomDeckStore,
 ) : SettingsRepository {
 
     private object Keys {
@@ -76,7 +77,10 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getAvailableThemes(): List<ThemePreset> = ThemePresets.ALL
-    override suspend fun getAvailableDecks(): List<DeckArt> = DeckArtCatalog.ALL
+
+    /** Bundled decks first, then user-imported decks scanned from filesDir. */
+    override suspend fun getAvailableDecks(): List<DeckArt> =
+        DeckArtCatalog.ALL + customDeckStore.listAll()
 
     override suspend fun setThemeId(id: String) {
         context.settingsDataStore.edit { it[Keys.THEME_ID] = id }
