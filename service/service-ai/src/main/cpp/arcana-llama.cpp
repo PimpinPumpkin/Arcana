@@ -112,11 +112,15 @@ Java_com_arcana_service_ai_local_LlamaBridge_nativeLoadModel(
     }
 
     // Sampler chain: top-k → top-p → temperature → distribution.
+    // Temperature of 0.5 (was 0.7) trades a bit of variety for noticeably
+    // tighter format compliance on the 0.5B model — 0.7 was producing
+    // "###2###"-style heading drift and occasional invented cards. 0.5 is
+    // still warm enough that re-running gives meaningfully different prose.
     auto sparams = llama_sampler_chain_default_params();
     session->sampler = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(session->sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(session->sampler, llama_sampler_init_top_p(0.9f, 1));
-    llama_sampler_chain_add(session->sampler, llama_sampler_init_temp(0.7f));
+    llama_sampler_chain_add(session->sampler, llama_sampler_init_temp(0.5f));
     llama_sampler_chain_add(session->sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     return reinterpret_cast<jlong>(session);

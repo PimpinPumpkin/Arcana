@@ -26,23 +26,36 @@ Stay tight: the whole reading should be 250–500 words. Do not include any prea
 """.trimIndent()
 
     fun userPrompt(request: InterpretationRequest): String = buildString {
+        val drawn = request.drawnCards.sortedBy { it.positionIndex }
+        val n = drawn.size
+
         request.question?.takeIf { it.isNotBlank() }?.let {
             appendLine("Question: $it")
             appendLine()
         }
-        appendLine("Spread: ${request.spread.name}")
-        appendLine(request.spread.description)
+
+        // Lead with the count + an explicit "only these" guard. Small models
+        // hallucinate cards that weren't drawn (especially on 1-card pulls
+        // where their training distribution expects more); restating the
+        // count and forbidding extras up-front pulls them back in line.
+        appendLine("This is a $n-card reading. Discuss ONLY the $n card${if (n == 1) "" else "s"} listed below — do not invent or reference any other cards.")
         appendLine()
-        appendLine("Cards drawn:")
-        request.drawnCards.sortedBy { it.positionIndex }.forEach { drawn ->
-            val pos = request.spread.positions.firstOrNull { it.index == drawn.positionIndex }
-            val orient = if (drawn.orientation == Orientation.REVERSED) " (reversed)" else ""
-            appendLine("- Position ${drawn.positionIndex} — ${pos?.label ?: "?"}: ${drawn.card.name}$orient")
-            pos?.meaning?.let { appendLine("    (this position represents: $it)") }
+        appendLine("Spread: ${request.spread.name}")
+        appendLine()
+        appendLine("Cards drawn (exactly $n):")
+        drawn.forEach { dc ->
+            val pos = request.spread.positions.firstOrNull { it.index == dc.positionIndex }
+            val orient = if (dc.orientation == Orientation.REVERSED) " (reversed)" else " (upright)"
+            appendLine("${dc.positionIndex}. ${dc.card.name}$orient — position: ${pos?.label ?: "?"}")
+            pos?.meaning?.takeIf { it.isNotBlank() }?.let {
+                appendLine("   (this position represents: $it)")
+            }
         }
         appendLine()
-        appendLine("Tone preference: ${request.tone.systemHint}")
+        appendLine("Tone: ${request.tone.systemHint}")
         appendLine()
-        appendLine("Please offer a thoughtful interpretation.")
+        // Emit the format reminder right next to the cards so the model
+        // doesn't drift on the "### N." heading shape mid-generation.
+        appendLine("Write the reading using the exact Markdown structure from the system prompt. Each ### heading must look like: ### N. Card Name — Position Label (upright|reversed)")
     }
 }
