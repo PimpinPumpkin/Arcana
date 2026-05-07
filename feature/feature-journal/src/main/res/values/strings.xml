@@ -7,6 +7,9 @@
     <string name="journal_notes_label">Your notes</string>
     <string name="journal_save_notes">Save notes</string>
     <string name="journal_re_interpret">Re-interpret</string>
+    <string name="journal_generate_interpret">Generate AI interpretation</string>
+    <string name="journal_reinterpret">Re-interpret with AI</string>
+    <string name="journal_cancel_interpret">Cancel interpretation</string>
     <string name="journal_back">Back</string>
     <string name="journal_save_done">Saved ✓</string>
     <string name="journal_saved_message">Reading saved</string>

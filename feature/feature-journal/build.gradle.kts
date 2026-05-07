@@ -23,6 +23,9 @@ dependencies {
     implementation(project(":core:core-domain"))
     implementation(project(":core:core-data"))
     implementation(project(":core:core-ui"))
+    // For Generate-AI-interpretation on saved readings: pulls in
+    // InterpreterRegistry + InterpretationRequest from service-ai.
+    implementation(project(":service:service-ai"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
