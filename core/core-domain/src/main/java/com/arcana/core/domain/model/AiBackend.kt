@@ -1,23 +1,18 @@
 package com.arcana.core.domain.model
 
-enum class AiBackendType(val displayName: String, val requiresNetwork: Boolean) {
-    RULE_BASED("Rule-based (offline, no AI)", requiresNetwork = false),
-    LOCAL_LLM("Local LLM (on-device)", requiresNetwork = false),
-    CLAUDE_API("Claude API (cloud)", requiresNetwork = true),
+enum class AiBackendType(val requiresNetwork: Boolean) {
+    RULE_BASED(requiresNetwork = false),
+    LOCAL_LLM(requiresNetwork = false),
+    CLAUDE_API(requiresNetwork = true),
 }
 
 data class AiSettings(
     val backendType: AiBackendType,
     val claudeApiKey: String,
-    val localModelInstalled: Boolean,
-    /** Which `ModelManifest.id` is currently active for the local backend. */
+    /** The on-device model readings should use, if it is installed. */
     val localModelId: String,
+    /** Blank means the app's current default. */
     val claudeModelId: String,
-    /**
-     * Whether we've already shown the user the first-tap "install offline AI?"
-     * prompt at least once. Flipped to true the first time the user makes a
-     * choice (either "install" or "not now") so the prompt doesn't keep
-     * appearing.
-     */
+    /** Whether the offer to install an on-device model has been answered, so it is made only once. */
     val interpretPromptShown: Boolean,
 )
