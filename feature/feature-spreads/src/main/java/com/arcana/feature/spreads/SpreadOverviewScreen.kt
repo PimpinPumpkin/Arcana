@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -39,6 +39,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcana.core.domain.model.Position
 import com.arcana.core.domain.model.Spread
 import com.arcana.core.ui.components.SpreadBoard
+import com.arcana.core.ui.components.Tag
+import com.arcana.core.ui.util.cardCount
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,33 +95,24 @@ fun SpreadOverviewScreen(
                         modifier = Modifier.padding(top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        AssistChip(
-                            onClick = {},
-                            label = { Text("${spread.cardCount} cards") },
-                        )
-                        AssistChip(
-                            onClick = {},
-                            label = { Text(spread.difficulty.displayName) },
-                        )
+                        Tag(cardCount(spread.cardCount))
+                        Tag(spread.difficulty.displayName)
                     }
                 }
             }
 
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(boardHeightFor(spread))
-                        .padding(horizontal = 8.dp),
-                ) {
-                    SpreadBoard(
-                        spread = spread,
-                        deck = deck,
-                        drawnCards = null, // face-down, just showing the layout
-                        showLabels = false,
-                        showPositionNumbers = true,
-                    )
-                }
+                // Face down: this screen is about where the cards go.
+                SpreadBoard(
+                    spread = spread,
+                    deck = deck,
+                    drawnCards = null,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    // Most of a screen, so a twelve-card layout is still readable, with the
+                    // start of the guide below it in view.
+                    maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.72f,
+                    maxCardWidth = 150.dp,
+                )
             }
 
             item {
@@ -211,12 +204,6 @@ private fun PositionRow(position: Position) {
     }
 }
 
-private fun boardHeightFor(spread: Spread): androidx.compose.ui.unit.Dp = when (spread.id) {
-    "celtic_cross", "year_ahead" -> 480.dp
-    "horseshoe" -> 380.dp
-    "relationship_5" -> 360.dp
-    else -> 280.dp
-}
 
 private fun practiceTipFor(spread: Spread): String = when (spread.id) {
     "celtic_cross" -> "With your physical deck: shuffle thoroughly, cut the deck three times, then lay out the first six cards in a cross pattern (1 over 2, 3 below, 4 left, 5 above, 6 right). The remaining four go in a vertical column to the right, bottom to top."

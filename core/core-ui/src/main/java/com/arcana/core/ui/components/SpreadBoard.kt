@@ -3,9 +3,8 @@ package com.arcana.core.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -14,27 +13,38 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.arcana.core.domain.model.Card
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.DrawnCard
 import com.arcana.core.domain.model.Position
 import com.arcana.core.domain.model.Spread
-import kotlin.math.min
+import com.arcana.core.ui.layout.SpreadFit
+import com.arcana.core.ui.util.scaleToFitWords
+import com.arcana.core.ui.util.scaledBy
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * Renders a spread by placing each card at its normalized [0..1] coordinate within
- * the bounding box. Pass [drawnCards]=null to render face-down placeholders.
+ * A spread laid out on the screen. Cards are drawn as large as the width allows without touching
+ * each other, with each position's name underneath when there is room for it. The board takes the
+ * full width it is given and only the height it needs, up to [maxHeight].
  *
- * Uses [Modifier.offset] (signed) rather than [Modifier.padding] (which crashes on
- * negative values) so spreads with positions near the top or left edge — Horseshoe,
- * Year Wheel — don't blow up on container shapes that aren't square.
+ * Pass [drawnCards] as null to show the layout face down.
  */
 @Composable
 fun SpreadBoard(
@@ -43,178 +53,179 @@ fun SpreadBoard(
     drawnCards: List<DrawnCard>?,
     modifier: Modifier = Modifier,
     onCardClick: ((Card, Int) -> Unit)? = null,
-    /** Show the position's full label under each card. Off by default — looks cluttered on dense spreads. */
-    showLabels: Boolean = false,
-    /** Show the position number badge in the corner of each card. */
+    /** Name each position under its card when that does not cost the cards much of their size. */
+    showLabels: Boolean = true,
     showPositionNumbers: Boolean = true,
-    /** Card width as a fraction of the smaller of board width/height — keeps cards consistent on any aspect. */
-    cardSizeFraction: Float = 0.20f,
+    /** The tallest the board may grow. Unset, it uses the height it is offered, or 1.5 times its width. */
+    maxHeight: Dp = Dp.Unspecified,
+    /**
+     * A height the board keeps within when that costs the cards little of their size: usually
+     * the screen, so that a spread only just too tall for it does not need scrolling.
+     */
+    preferredHeight: Dp = Dp.Unspecified,
+    maxCardWidth: Dp = 240.dp,
 ) {
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(8.dp),
-    ) {
-        val parentW = maxWidth
-        val parentH = maxHeight
-        // Size cards based on the smaller dimension so they always fit.
-        val baseDp = min(parentW.value, parentH.value).dp
-        val cardWidth = baseDp * cardSizeFraction
-        val cardHeight = cardWidth / CARD_ASPECT
+    val labelStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
 
-        // Two passes so labels can always sit on top of every card. With a
-        // single-pass render (label inside each PositionedCard), Celtic
-        // Cross's stacked + rotated positions occluded their neighbors'
-        // labels. Now: cards drawn first at their natural zIndex, then
-        // labels drawn on a high-zIndex top layer so they're never hidden
-        // by another card's body.
-        spread.positions.forEach { position ->
-            val drawn = drawnCards?.firstOrNull { it.positionIndex == position.index }
-            PositionedCard(
-                position = position,
-                drawn = drawn,
-                deck = deck,
-                cardWidth = cardWidth,
-                cardHeight = cardHeight,
-                parentWidth = parentW,
-                parentHeight = parentH,
-                onClick = if (drawn != null && onCardClick != null) {
-                    { onCardClick(drawn.card, position.index) }
-                } else null,
-                showNumber = showPositionNumbers,
-            )
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val widthPx = constraints.maxWidth.toFloat()
+        val ceiling = when {
+            maxHeight != Dp.Unspecified -> with(density) { maxHeight.toPx() }
+            constraints.hasBoundedHeight -> constraints.maxHeight.toFloat()
+            else -> widthPx * 1.5f
         }
-        if (showLabels) {
-            spread.positions.forEach { position ->
-                PositionedLabel(
-                    position = position,
-                    cardWidth = cardWidth,
-                    cardHeight = cardHeight,
-                    parentWidth = parentW,
-                    parentHeight = parentH,
+        val preferred = if (preferredHeight != Dp.Unspecified) with(density) { preferredHeight.toPx() } else ceiling
+        val plan = remember(spread.positions, widthPx, ceiling, preferred, showLabels, maxCardWidth, density.density, density.fontScale, labelStyle) {
+            val stacks = SpreadFit.stacks(spread.positions.map { it.coords.x to it.coords.y })
+                .map { indexes -> indexes.map { spread.positions[it] } }
+            val labels = stacks.map { stack -> stack.joinToString(" / ") { it.label } }
+            val padding = with(density) { LABEL_PADDING.toPx() }
+            fun solveWithin(height: Float, style: TextStyle?): SpreadFit.Result = with(density) {
+                SpreadFit.fit(
+                    slots = stacks.mapIndexed { i, stack ->
+                        SpreadFit.Slot(
+                            x = stack[0].coords.x,
+                            y = stack[0].coords.y,
+                            rotations = stack.map { it.coords.rotationDegrees },
+                            labelWidth = if (style != null) measurer.measure(labels[i], style, maxLines = 1).size.width + padding * 2 else 0f,
+                        )
+                    },
+                    spec = SpreadFit.Spec(
+                        width = widthPx,
+                        maxHeight = height,
+                        aspect = CARD_ASPECT,
+                        minCard = 40.dp.toPx(),
+                        maxCard = maxCardWidth.toPx(),
+                        gap = 8.dp.toPx(),
+                        padding = 8.dp.toPx(),
+                        labelLineHeight = if (style != null) measurer.measure("Ag", style).size.height.toFloat() else 0f,
+                        labelGap = 4.dp.toPx(),
+                    ),
                 )
             }
+            fun solve(style: TextStyle?): SpreadFit.Result {
+                val tall = solveWithin(ceiling, style)
+                if (preferred >= ceiling || tall.height <= preferred) return tall
+                val short = solveWithin(preferred, style)
+                return if (short.fits && short.cardWidth >= tall.cardWidth * PREFERRED_WORTH) short else tall
+            }
+            val bare = solve(null)
+            var style = labelStyle
+            var named = if (showLabels) solve(style) else null
+            if (named != null) {
+                // Small cards get smaller lettering, down to a point, so that a name like
+                // "Environment" is not split across two lines.
+                val fit = labels.indices.minOf { i -> measurer.scaleToFitWords(labels[i], style, named!!.slots[i].boxWidth - padding * 2) }
+                if (fit < 1f) {
+                    style = style.scaledBy((fit * 0.98f).coerceAtLeast(SMALLEST_LABEL))
+                    named = solve(style)
+                }
+            }
+            // Labels are worth a little card size, not a lot of it.
+            val result = if (named != null && named.fits && named.cardWidth >= bare.cardWidth * LABEL_WORTH) named else bare
+            BoardPlan(stacks, labels, result, named = result === named, labelStyle = style)
         }
-    }
-}
 
-@Composable
-private fun PositionedCard(
-    position: Position,
-    drawn: DrawnCard?,
-    deck: DeckArt,
-    cardWidth: androidx.compose.ui.unit.Dp,
-    cardHeight: androidx.compose.ui.unit.Dp,
-    parentWidth: androidx.compose.ui.unit.Dp,
-    parentHeight: androidx.compose.ui.unit.Dp,
-    onClick: (() -> Unit)?,
-    showNumber: Boolean,
-) {
-    val centerX = parentWidth * position.coords.x
-    val centerY = parentHeight * position.coords.y
-    val offsetX = centerX - cardWidth / 2
-    val offsetY = centerY - cardHeight / 2
-
-    Box(
-        modifier = Modifier
-            .offset(x = offsetX, y = offsetY)
-            .width(cardWidth)
-            .zIndex(position.index.toFloat()),
-    ) {
-        // Stack the rotated card art with an UNROTATED badge layer so
-        // the position number stays readable when the card is at 90°/180°
-        // and doesn't sit on top of the corner reversed-arrow badge
-        // (which lives at TopStart inside TarotCardView).
-        Box(modifier = Modifier.width(cardWidth)) {
-            Box(
-                modifier = Modifier
-                    .width(cardWidth)
-                    .graphicsLayer { rotationZ = position.coords.rotationDegrees },
-            ) {
-                if (drawn != null) {
-                    TarotCardView(
-                        card = drawn.card,
-                        deck = deck,
-                        orientation = drawn.orientation,
-                        onClick = onClick,
+        val result = plan.result
+        Box(modifier = Modifier.fillMaxWidth().height(with(density) { result.height.toDp() })) {
+            val cardW = with(density) { result.cardWidth.toDp() }
+            val cardH = with(density) { result.cardHeight.toDp() }
+            val badge = (cardW * 0.26f).coerceIn(16.dp, 24.dp)
+            plan.stacks.forEachIndexed { i, stack ->
+                val placed = result.slots[i]
+                val cx = with(density) { placed.centerX.toDp() }
+                val cy = with(density) { placed.centerY.toDp() }
+                stack.forEach { position ->
+                    val drawn = drawnCards?.firstOrNull { it.positionIndex == position.index }
+                    Box(
+                        modifier = Modifier
+                            .offset(x = cx - cardW / 2, y = cy - cardH / 2)
+                            .size(cardW, cardH)
+                            .zIndex(position.index.toFloat())
+                            .graphicsLayer { rotationZ = position.coords.rotationDegrees },
+                    ) {
+                        if (drawn != null) {
+                            TarotCardView(
+                                card = drawn.card,
+                                deck = deck,
+                                orientation = drawn.orientation,
+                                onClick = onCardClick?.let { click -> { click(drawn.card, position.index) } },
+                                reversedBadgeSize = badge,
+                            )
+                        } else {
+                            CardBackView(deck = deck)
+                        }
+                    }
+                    // One card needs no number.
+                    if (showPositionNumbers && spread.positions.size > 1) {
+                        // The number sits on the top right corner of the card as it lies, so it
+                        // stays upright and readable on a card that is turned.
+                        val r = Math.toRadians(position.coords.rotationDegrees.toDouble())
+                        val reachX = cardW * abs(cos(r)).toFloat() / 2 + cardH * abs(sin(r)).toFloat() / 2
+                        val reachY = cardW * abs(sin(r)).toFloat() / 2 + cardH * abs(cos(r)).toFloat() / 2
+                        PositionNumberBadge(
+                            index = position.index,
+                            size = badge,
+                            modifier = Modifier
+                                .offset(x = cx + reachX - badge - 3.dp, y = cy - reachY + 3.dp)
+                                .zIndex(NUMBER_Z + position.index),
+                        )
+                    }
+                }
+                if (plan.named && placed.labelLines > 0) {
+                    val boxW = with(density) { placed.boxWidth.toDp() }
+                    Text(
+                        text = plan.labels[i],
+                        style = plan.labelStyle,
+                        textAlign = TextAlign.Center,
+                        maxLines = placed.labelLines,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .offset(x = cx - boxW / 2, y = with(density) { placed.labelTop.toDp() })
+                            .width(boxW)
+                            .padding(horizontal = LABEL_PADDING),
                     )
-                } else {
-                    CardBackView()
-                }
-            }
-            if (showNumber) {
-                Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                    PositionNumberBadge(position.index)
                 }
             }
         }
     }
 }
 
-/**
- * Position label drawn on a top zIndex layer so it's never occluded by
- * another card's body. Sits just below the card's nominal box (the
- * label slot from the old single-pass renderer) — the position is the
- * same as before, only the layering differs.
- */
-@Composable
-private fun PositionedLabel(
-    position: Position,
-    cardWidth: androidx.compose.ui.unit.Dp,
-    cardHeight: androidx.compose.ui.unit.Dp,
-    parentWidth: androidx.compose.ui.unit.Dp,
-    parentHeight: androidx.compose.ui.unit.Dp,
-) {
-    val centerX = parentWidth * position.coords.x
-    val centerY = parentHeight * position.coords.y
-    val offsetX = centerX - cardWidth / 2
-    // 4dp gap mirrors the old Column { card; padding(top=4); label }
-    // layout — labels sit at the same screen coordinate as before.
-    val offsetY = centerY + cardHeight / 2 + 2.dp
-
-    Box(
-        modifier = Modifier
-            .offset(x = offsetX, y = offsetY)
-            .width(cardWidth)
-            // Above any card's natural index. Labels never get occluded.
-            .zIndex(LABEL_Z),
-    ) {
-        Text(
-            text = position.label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .fillMaxWidth()
-                // Subtle pill background so labels stay readable when they
-                // happen to land on top of another card's art (Celtic
-                // Cross's stacked positions).
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                    androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-                )
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-        )
-    }
-}
-
-private const val LABEL_Z = 10_000f
+private class BoardPlan(
+    val stacks: List<List<Position>>,
+    val labels: List<String>,
+    val result: SpreadFit.Result,
+    val named: Boolean,
+    val labelStyle: TextStyle,
+)
 
 @Composable
-private fun PositionNumberBadge(index: Int) {
+private fun PositionNumberBadge(index: Int, size: Dp, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
-            .padding(4.dp)
-            .size(22.dp)
+        modifier = modifier
+            .size(size)
             .background(MaterialTheme.colorScheme.primary, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = index.toString(),
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.copy(
+                // Sized from the badge, not the user's font scale: it has to fit the circle.
+                fontSize = with(LocalDensity.current) { (size * 0.52f).toSp() },
+                lineHeight = with(LocalDensity.current) { (size * 0.6f).toSp() },
+                letterSpacing = 0.sp,
+            ),
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onPrimary,
         )
     }
 }
+
+private val LABEL_PADDING = 2.dp
+private const val LABEL_WORTH = 0.8f
+private const val SMALLEST_LABEL = 0.75f
+private const val PREFERRED_WORTH = 0.85f
+private const val NUMBER_Z = 5_000f
