@@ -1,39 +1,44 @@
 package com.arcana.core.data.repository
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
+import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import com.arcana.core.common.DispatcherProvider
+import com.arcana.core.data.repository.CustomDeckStore.Companion.isImage
+import com.arcana.core.domain.model.Card
+import com.arcana.core.domain.model.CardFileNames
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.repository.CardRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.max
 
 /**
- * Bulk-imports a deck of card images from a user-picked folder.
+ * Brings card images into a deck and takes decks back out.
  *
- * The matching convention: each card has an `imageRef` in cards.json
- * (e.g. `major_00_fool.jpg`, `wands_01_ace.jpg`). We match files in the
- * picked folder by **basename, case-insensitive**, against those imageRefs.
- * Whatever extension the user's file uses (`.jpg`, `.png`, `.webp`, etc.) we
- * accept — Coil decodes by content, not extension — and copy under the
- * canonical imageRef filename. So `Major_00_Fool.PNG` gets imported as
- * `major_00_fool.jpg` in our deck folder. That keeps DeckAssetResolver's
- * lookup simple (always look for the exact imageRef path).
- *
- * Missing files are fine — those cards just render the text fallback in the
- * UI. The user can fix specific cards later via the per-card override.
+ * Which card a file is for is read from its name by [CardFileNames], which knows the app's own
+ * names and the common ways decks are named. A file called `back` is the card back. Anything
+ * else in the folder or archive is ignored, and cards with no file show their name instead.
+ * Whatever a file was called, it is stored under the card's own name.
  */
 @Singleton
 class DeckImporter @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val customDeckStore: CustomDeckStore,
+    private val store: CustomDeckStore,
     private val cardRepository: CardRepository,
     private val dispatchers: DispatcherProvider,
 ) {
@@ -42,260 +47,259 @@ class DeckImporter @Inject constructor(
             val deckId: String,
             val matched: Int,
             val total: Int,
-            /** ImageRefs that the folder didn't have a file for. */
+            /** Cards the source had no image for. */
             val missingRefs: List<String>,
         ) : Result
+
         data class Failed(val message: String) : Result
     }
 
-    /**
-     * Walk [folderTreeUri] (from a SAF OpenDocumentTree picker), copy any
-     * matching card images into a fresh deck folder, and write the manifest.
-     */
-    suspend fun importFromFolder(
-        folderTreeUri: Uri,
-        deckName: String,
-        artist: String,
-        description: String,
-    ): Result = withContext(dispatchers.io) {
-        try {
-            val cards = cardRepository.getAllCards()
-            // Map basename (lowercase, no extension) → imageRef literal.
-            val refsByBasename: Map<String, String> = cards
-                .map { it.imageRef }
-                .associateBy { it.substringBeforeLast('.').lowercase() }
-
-            val tree = DocumentFile.fromTreeUri(context, folderTreeUri)
-                ?: return@withContext Result.Failed("Couldn't open the selected folder.")
-            val files = tree.listFiles().toList()
-
-            val deckId = customDeckStore.newDeckId(deckName.takeIf { it.isNotBlank() } ?: "deck")
-            val deckDir = customDeckStore.deckDir(deckId).apply { mkdirs() }
-
-            var matched = 0
-            val matchedRefs = mutableSetOf<String>()
-            for (doc in files) {
-                if (!doc.isFile) continue
-                val name = doc.name ?: continue
-                if (!name.isImageFile()) continue
-
-                val baseLower = name.substringBeforeLast('.').lowercase()
-                val ref = refsByBasename[baseLower] ?: continue
-                if (ref in matchedRefs) continue // first wins; ignore duplicates
-
-                val dest = File(deckDir, ref)
-                context.contentResolver.openInputStream(doc.uri)?.use { input ->
-                    dest.outputStream().use { output -> input.copyTo(output) }
-                } ?: continue
-                matchedRefs += ref
-                matched++
-            }
-
-            // Optional: a card-back override the user named "back.png" / "back.jpg".
-            val back = files
-                .firstOrNull {
-                    it.isFile && it.name?.substringBeforeLast('.')?.lowercase() == "back"
-                        && it.name?.isImageFile() == true
-                }
-            val backFileName = if (back != null) {
-                val dest = File(deckDir, "back.png")
-                context.contentResolver.openInputStream(back.uri)?.use { input ->
-                    dest.outputStream().use { output -> input.copyTo(output) }
-                }
-                "${deckDir.absolutePath}/back.png"
-            } else {
-                "" // empty → core-ui's CardBackView is used as the fallback
-            }
-
-            customDeckStore.writeManifest(
-                DeckArt(
-                    id = deckId,
-                    name = deckName.ifBlank { "Imported deck" },
-                    artist = artist.ifBlank { "Unknown" },
-                    year = null,
-                    license = "User-imported",
-                    description = description.ifBlank { "Imported by user." },
-                    assetFolder = deckDir.absolutePath,
-                    cardBackAsset = backFileName,
-                    isBundled = false,
-                ),
-            )
-
-            val missing = cards.map { it.imageRef }.filter { it !in matchedRefs }
-            Result.Success(deckId = deckId, matched = matched, total = cards.size, missingRefs = missing)
-        } catch (e: Exception) {
-            Result.Failed("Import failed: ${e.message ?: e::class.java.simpleName}")
-        }
-    }
-
-    /**
-     * Copy a single image (selected from the gallery) into an existing
-     * deck's folder under the given imageRef. Used by the per-card override.
-     */
-    suspend fun replaceCardImage(
-        deckId: String,
-        imageRef: String,
-        sourceUri: Uri,
-    ): Boolean = withContext(dispatchers.io) {
-        try {
-            val dest = customDeckStore.cardImageFile(deckId, imageRef)
-            dest.parentFile?.mkdirs()
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            } ?: return@withContext false
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    suspend fun deleteCardImage(deckId: String, imageRef: String): Boolean =
+    /** Imports every matching image in a folder the user picked. */
+    suspend fun importFromFolder(folderTreeUri: Uri, deckName: String, artist: String, description: String): Result =
         withContext(dispatchers.io) {
-            customDeckStore.cardImageFile(deckId, imageRef).delete()
-        }
-
-    /**
-     * Bundle a custom deck's manifest + images into a single ZIP.
-     * Layout inside the archive is flat — `manifest.json` and the per-card
-     * image files at the root, no nested directory. The importer (see
-     * [importFromZip]) reads that exact shape, so a deck round-trips
-     * cleanly.
-     */
-    suspend fun exportToZip(deckId: String, outputUri: Uri): Result =
-        withContext(dispatchers.io) {
+            val staging = newStaging()
             try {
-                val deckDir = customDeckStore.deckDir(deckId)
-                if (!deckDir.isDirectory) {
-                    return@withContext Result.Failed("Deck folder not found.")
-                }
-                val files = deckDir.listFiles().orEmpty().filter { it.isFile }
-                if (files.isEmpty()) {
-                    return@withContext Result.Failed("Deck has no files to export.")
-                }
-                context.contentResolver.openOutputStream(outputUri, "wt")?.use { out ->
-                    ZipOutputStream(out.buffered()).use { zip ->
-                        for (f in files) {
-                            zip.putNextEntry(ZipEntry(f.name))
-                            f.inputStream().use { input -> input.copyTo(zip) }
-                            zip.closeEntry()
-                        }
-                    }
-                } ?: return@withContext Result.Failed("Couldn't open output file.")
-                Result.Success(
-                    deckId = deckId,
-                    matched = files.count { it.name.isImageFile() },
-                    total = files.size,
-                    missingRefs = emptyList(),
-                )
-            } catch (e: Exception) {
-                Result.Failed("Export failed: ${e.message ?: e::class.java.simpleName}")
-            }
-        }
-
-    /**
-     * Pull a deck back out of a previously-exported ZIP. Reads the
-     * manifest entry to recover display name / artist / description, but
-     * deliberately mints a **fresh** deck ID so importing a ZIP twice (or
-     * importing someone else's that happens to share an ID) makes a new
-     * deck rather than colliding with an existing one.
-     */
-    suspend fun importFromZip(zipUri: Uri): Result =
-        withContext(dispatchers.io) {
-            try {
-                // Two passes: first to read the manifest, second to copy
-                // images. ZipInputStream is single-pass so we buffer
-                // everything into memory in one walk and dispatch from
-                // there.
-                val entries = mutableMapOf<String, ByteArray>()
-                context.contentResolver.openInputStream(zipUri)?.use { input ->
-                    ZipInputStream(input.buffered()).use { zip ->
-                        var entry: ZipEntry? = zip.nextEntry
-                        while (entry != null) {
-                            if (!entry.isDirectory) {
-                                // Strip any directory prefix some zip tools add (e.g. macOS Archive Utility's
-                                // wrapper folder). We only want the basename.
-                                val name = entry.name.substringAfterLast('/')
-                                if (name.isNotEmpty()) entries[name] = zip.readBytes()
-                            }
-                            zip.closeEntry()
-                            entry = zip.nextEntry
-                        }
-                    }
-                } ?: return@withContext Result.Failed("Couldn't open ZIP file.")
-
-                val manifestBytes = entries["manifest.json"]
-                    ?: return@withContext Result.Failed("ZIP doesn't contain a manifest.json — not an Arcana deck export.")
-                val manifestJson = String(manifestBytes, Charsets.UTF_8)
-                val name = readManifestField(manifestJson, "name") ?: "Imported deck"
-                val artist = readManifestField(manifestJson, "artist") ?: "Unknown"
-                val description = readManifestField(manifestJson, "description") ?: ""
-
-                val deckId = customDeckStore.newDeckId(name)
-                val deckDir = customDeckStore.deckDir(deckId).apply { mkdirs() }
-
                 val cards = cardRepository.getAllCards()
-                val refsByBasename: Map<String, String> = cards
-                    .map { it.imageRef }
-                    .associateBy { it.substringBeforeLast('.').lowercase() }
-
-                val matchedRefs = mutableSetOf<String>()
-                var hadBack = false
-                for ((entryName, bytes) in entries) {
-                    if (entryName == "manifest.json") continue
-                    val baseLower = entryName.substringBeforeLast('.').lowercase()
-                    when {
-                        baseLower == "back" && entryName.isImageFile() -> {
-                            File(deckDir, "back.png").writeBytes(bytes)
-                            hadBack = true
-                        }
-                        else -> {
-                            val ref = refsByBasename[baseLower] ?: continue
-                            File(deckDir, ref).writeBytes(bytes)
-                            matchedRefs += ref
-                        }
-                    }
+                val tree = DocumentFile.fromTreeUri(context, folderTreeUri)
+                    ?: return@withContext Result.Failed("Could not open that folder.")
+                val matched = HashSet<String>()
+                for (doc in tree.listFiles()) {
+                    val name = doc.name ?: continue
+                    if (!doc.isFile || !name.isImage()) continue
+                    val key = keyFor(name, cards)?.takeIf { it !in matched } ?: continue
+                    val saved = context.contentResolver.openInputStream(doc.uri)?.use { saveImage(it, staging, key) } ?: false
+                    if (saved && key != BACK) matched += key
                 }
-
-                customDeckStore.writeManifest(
-                    com.arcana.core.domain.model.DeckArt(
-                        id = deckId,
-                        name = name,
-                        artist = artist,
-                        year = null,
-                        license = "Imported (ZIP)",
-                        description = description,
-                        assetFolder = deckDir.absolutePath,
-                        cardBackAsset = if (hadBack) "${deckDir.absolutePath}/back.png" else "",
-                        isBundled = false,
-                    ),
-                )
-
-                val missing = cards.map { it.imageRef }.filter { it !in matchedRefs }
-                Result.Success(
-                    deckId = deckId,
-                    matched = matchedRefs.size,
-                    total = cards.size,
-                    missingRefs = missing,
-                )
+                if (matched.isEmpty()) return@withContext Result.Failed(NOTHING_FOUND)
+                finish(staging, deckName.ifBlank { "Imported deck" }, artist.ifBlank { "Unknown" }, description, "User-imported", matched, cards)
             } catch (e: Exception) {
                 Result.Failed("Import failed: ${e.message ?: e::class.java.simpleName}")
+            } finally {
+                staging.deleteRecursively()
             }
         }
 
-    /**
-     * Pull a top-level string field out of the manifest JSON without
-     * pulling kotlinx-serialization deps into core-data's runtime path
-     * unnecessarily — the manifest is tiny and tightly-controlled, so a
-     * plain regex is fine here.
-     */
-    private fun readManifestField(json: String, field: String): String? {
-        val pattern = Regex("\"$field\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"")
-        return pattern.find(json)?.groupValues?.get(1)
-            ?.replace("\\\"", "\"")
-            ?.replace("\\\\", "\\")
+    /** Sets one card's image, replacing whatever the deck had for it. */
+    suspend fun replaceCardImage(deckId: String, imageRef: String, sourceUri: Uri): Boolean = withContext(dispatchers.io) {
+        val ok = runCatching {
+            context.contentResolver.openInputStream(sourceUri)?.use {
+                saveImage(it, store.deckDir(deckId), imageRef.substringBeforeLast('.').lowercase())
+            } ?: false
+        }.getOrDefault(false)
+        if (ok) store.changed()
+        ok
     }
 
-    private fun String.isImageFile(): Boolean =
-        endsWith(".jpg", true) || endsWith(".jpeg", true) ||
-            endsWith(".png", true) || endsWith(".webp", true)
+    suspend fun deleteCardImage(deckId: String, imageRef: String): Boolean = withContext(dispatchers.io) {
+        val ok = store.imageFile(deckId, imageRef)?.delete() ?: false
+        if (ok) store.changed()
+        ok
+    }
+
+    /** Writes the deck's details and images to one ZIP, all at the top level. */
+    suspend fun exportToZip(deckId: String, outputUri: Uri): Result = withContext(dispatchers.io) {
+        try {
+            val files = store.deckDir(deckId).listFiles().orEmpty().filter { it.isFile && (it.name == CustomDeckStore.MANIFEST || it.name.isImage()) }
+            if (files.isEmpty()) return@withContext Result.Failed("This deck has nothing to export.")
+            context.contentResolver.openOutputStream(outputUri, "wt")?.use { out ->
+                ZipOutputStream(out.buffered()).use { zip ->
+                    for (f in files) {
+                        zip.putNextEntry(ZipEntry(f.name))
+                        f.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                }
+            } ?: return@withContext Result.Failed("Could not open the file to write to.")
+            Result.Success(deckId, matched = files.count { it.name.isImage() }, total = files.size, missingRefs = emptyList())
+        } catch (e: Exception) {
+            Result.Failed("Export failed: ${e.message ?: e::class.java.simpleName}")
+        }
+    }
+
+    /**
+     * Imports a deck from a ZIP: one this app exported, or any archive of images named like the
+     * cards. It always arrives as a new deck, so importing twice never overwrites anything.
+     */
+    suspend fun importFromZip(zipUri: Uri): Result = withContext(dispatchers.io) {
+        val staging = newStaging()
+        try {
+            val cards = cardRepository.getAllCards()
+            val matched = HashSet<String>()
+            var details: CustomDeckStore.DeckDetails? = null
+            var total = 0L
+            context.contentResolver.openInputStream(zipUri)?.use { input ->
+                ZipInputStream(input.buffered()).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        // Only the last part of the path is used, so an entry cannot write outside the deck.
+                        val name = entry.name.substringAfterLast('/')
+                        if (entry.isDirectory || name.isEmpty() || name.startsWith(".")) continue
+                        val limited = Limited(zip, MAX_ENTRY_BYTES)
+                        if (name == CustomDeckStore.MANIFEST) {
+                            details = store.readManifest(limited.readBytes().toString(Charsets.UTF_8))
+                        } else if (name.isImage()) {
+                            val key = keyFor(name, cards)?.takeIf { it !in matched }
+                            if (key != null && saveImage(limited, staging, key) && key != BACK) matched += key
+                        }
+                        total += limited.count
+                        if (total > MAX_TOTAL_BYTES) throw IOException("The archive is too large.")
+                    }
+                }
+            } ?: return@withContext Result.Failed("Could not open that file.")
+            if (matched.isEmpty()) return@withContext Result.Failed(NOTHING_FOUND)
+            val name = details?.name ?: displayName(zipUri)?.substringBeforeLast('.') ?: "Imported deck"
+            finish(staging, name, details?.artist ?: "Unknown", details?.description.orEmpty(), "Imported (ZIP)", matched, cards)
+        } catch (e: Exception) {
+            Result.Failed("Import failed: ${e.message ?: e::class.java.simpleName}")
+        } finally {
+            staging.deleteRecursively()
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+
+    /** The name a file is stored under: its card's own, `back` for the card back, null if it is neither. */
+    private fun keyFor(fileName: String, cards: List<Card>): String? =
+        if (CardFileNames.isBack(fileName)) BACK else CardFileNames.cardFor(fileName, cards)?.let(::key)
+
+    private fun key(card: Card): String = card.imageRef.substringBeforeLast('.').lowercase()
+
+    /** A folder the deck list ignores (it has no manifest) until the import is complete. */
+    private fun newStaging(): File = store.deckDir(".import-${UUID.randomUUID()}").apply { mkdirs() }
+
+    private suspend fun finish(
+        staging: File,
+        name: String,
+        artist: String,
+        description: String,
+        license: String,
+        matched: Set<String>,
+        cards: List<Card>,
+    ): Result {
+        val names = cards.map(::key).toSet()
+        val deckId = store.newDeckId(name)
+        val dir = store.deckDir(deckId)
+        if (!staging.renameTo(dir)) return Result.Failed("Could not save the deck.")
+        store.writeManifest(
+            DeckArt(
+                id = deckId,
+                name = name,
+                artist = artist,
+                year = null,
+                license = license,
+                description = description,
+                assetFolder = dir.absolutePath,
+                isBundled = false,
+            ),
+        )
+        return Result.Success(deckId, matched.size, names.size, (names - matched).sorted())
+    }
+
+    /**
+     * Stores one image as `<key>.<ext>` in [dir]. A camera-sized photo is far more than a card on
+     * a phone screen needs, so anything large is scaled down and stored as WebP; the rest is kept
+     * exactly as it came.
+     *
+     * @return false if the data was not an image
+     */
+    private fun saveImage(input: InputStream, dir: File, key: String): Boolean {
+        val incoming = File(dir, ".incoming-$key")
+        try {
+            incoming.outputStream().use { input.copyTo(it) }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(incoming.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+            val edge = max(bounds.outWidth, bounds.outHeight)
+            val target: File
+            if (edge > SHRINK_ABOVE || incoming.length() > SHRINK_ABOVE_BYTES) {
+                val bitmap = decodeScaled(incoming, bounds, MAX_EDGE) ?: return false
+                target = File(dir, "$key.webp")
+                val tmp = File(dir, ".scaled-$key")
+                tmp.outputStream().use { bitmap.compress(webp(), 88, it) }
+                bitmap.recycle()
+                removeOthers(dir, key)
+                if (!tmp.renameTo(target)) return false
+            } else {
+                val ext = when (bounds.outMimeType) {
+                    "image/png" -> "png"
+                    "image/webp" -> "webp"
+                    else -> "jpg"
+                }
+                target = File(dir, "$key.$ext")
+                removeOthers(dir, key)
+                if (!incoming.renameTo(target)) return false
+            }
+            return true
+        } finally {
+            incoming.delete()
+        }
+    }
+
+    /** A deck holds one image per card: drop any earlier one, whatever its extension. */
+    private fun removeOthers(dir: File, key: String) {
+        dir.listFiles()?.forEach { if (it.isFile && it.name.isImage() && it.nameWithoutExtension.lowercase() == key) it.delete() }
+    }
+
+    private fun decodeScaled(file: File, bounds: BitmapFactory.Options, maxEdge: Int): Bitmap? {
+        val scale = maxEdge.toFloat() / max(bounds.outWidth, bounds.outHeight)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // ImageDecoder turns the picture the way its EXIF data says, which matters for photos.
+            return runCatching {
+                ImageDecoder.decodeBitmap(ImageDecoder.createSource(file)) { decoder, info, _ ->
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    if (scale < 1f) {
+                        decoder.setTargetSize((info.size.width * scale).toInt().coerceAtLeast(1), (info.size.height * scale).toInt().coerceAtLeast(1))
+                    }
+                }
+            }.getOrNull()
+        }
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxEdge) sample *= 2
+        return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+    }
+
+    @Suppress("DEPRECATION")
+    private fun webp(): Bitmap.CompressFormat =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
+
+    private fun displayName(uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
+
+    /** Reads at most [limit] bytes of one archive entry and counts them. Never closes the archive. */
+    private class Limited(private val source: InputStream, private val limit: Long) : InputStream() {
+        var count = 0L
+            private set
+
+        override fun read(): Int {
+            val b = source.read()
+            if (b >= 0) bump(1)
+            return b
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val n = source.read(b, off, len)
+            if (n > 0) bump(n)
+            return n
+        }
+
+        private fun bump(n: Int) {
+            count += n
+            if (count > limit) throw IOException("A file in the archive is too large.")
+        }
+
+        override fun close() = Unit
+    }
+
+    private companion object {
+        const val BACK = "back"
+        const val NOTHING_FOUND = "None of the images there could be matched to a card. Name each file for its card, like \"The Fool\", \"Queen of Cups\" or \"wands_05\"."
+        const val SHRINK_ABOVE = 2000
+        const val SHRINK_ABOVE_BYTES = 2L * 1024 * 1024
+        const val MAX_EDGE = 1600
+        const val MAX_ENTRY_BYTES = 40L * 1024 * 1024
+        const val MAX_TOTAL_BYTES = 1024L * 1024 * 1024
+    }
 }

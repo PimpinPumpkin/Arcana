@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcana.core.domain.model.DeckArt
+import com.arcana.core.ui.components.Tag
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,7 +130,7 @@ fun ManageDecksScreen(
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                             )
                             Text(
-                                "Pick a folder of card images named to match Arcana's convention.",
+                                "A folder of card images, each named for its card.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
                             )
@@ -162,7 +162,7 @@ fun ManageDecksScreen(
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                             )
                             Text(
-                                "Pick an Arcana deck export (.zip). Always lands as a fresh deck.",
+                                "A deck exported from Arcana, or any ZIP of card images. It is added as a new deck.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
                             )
@@ -207,8 +207,8 @@ fun ManageDecksScreen(
                         )
                         if (result.missingRefs.isNotEmpty()) {
                             Text(
-                                "Cards without an image will fall back to the text plate. " +
-                                    "You can fix individual ones via Edit deck.",
+                                "A card with no image shows its name instead. " +
+                                    "You can give it one in Edit deck.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 8.dp),
@@ -248,7 +248,7 @@ fun ManageDecksScreen(
                 onDismissRequest = viewModel::cancelDelete,
                 title = { Text("Delete \"${deck.name}\"?") },
                 text = {
-                    Text("This removes the deck and its image files from app storage. Saved readings keep working — they'll show with the bundled deck.")
+                    Text("This removes the deck and its images from the phone. Saved readings keep working and show with the bundled deck.")
                 },
                 confirmButton = {
                     TextButton(onClick = viewModel::confirmDelete) { Text("Delete") }
@@ -263,7 +263,7 @@ fun ManageDecksScreen(
             AlertDialog(
                 onDismissRequest = viewModel::dismissExportSuccess,
                 title = { Text("Deck exported") },
-                text = { Text("$msg Hand the .zip to anyone with Arcana — they can pull it in via \"Import a deck from a ZIP\".") },
+                text = { Text("$msg Anyone with Arcana can add it with \"Import a deck from a ZIP\".") },
                 confirmButton = {
                     TextButton(onClick = viewModel::dismissExportSuccess) { Text("Done") }
                 },
@@ -307,15 +307,7 @@ private fun DeckRow(
                     modifier = Modifier.padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    AssistChip(
-                        onClick = onSelect,
-                        label = {
-                            Text(
-                                if (deck.isBundled) "Bundled" else "Custom",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        },
-                    )
+                    Tag(if (deck.isBundled) "Bundled" else "Custom")
                 }
             }
             if (onExportZip != null) {
@@ -359,8 +351,8 @@ private fun ImportDeckDialog(
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "Pick a folder containing card images. Files must be named to match Arcana's imageRef convention — e.g. major_00_fool.jpg, wands_01_ace.jpg, swords_page.jpg. " +
-                        "Extension can be .jpg / .png / .webp; case doesn't matter. Missing files fall back to the text plate (you can fix specific cards later via Edit deck).",
+                    "Pick a folder of card images. Each file is named for its card, like \"The Fool\", \"Queen of Cups\" or \"wands_05\", as a JPEG, PNG or WebP. " +
+                        "A card with no image shows its name instead, and can be given one later in Edit deck.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 12.dp),
@@ -432,52 +424,24 @@ private fun HelpDialog(onDismiss: () -> Unit) {
         title = { Text("Custom decks") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    "Two ways to give Arcana your own card art.",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                HelpHeading("A whole deck at once")
+                HelpText(
+                    "Import a folder or a ZIP of images. Arcana reads which card each one is from its file name, so name each file for its card. All of these work:\n\n" +
+                        "  • The Fool, The High Priestess, Wheel of Fortune\n" +
+                        "  • Queen of Cups, 10 of Swords, Ace of Pentacles\n" +
+                        "  • wands_05, Cups11, pents14 (11 to 14 are page, knight, queen, king)\n" +
+                        "  • major_16 for a trump with no name on it\n" +
+                        "  • back, for the card back\n\n" +
+                        "JPEG, PNG and WebP all work. Very large images are scaled down as they come in. A card with no image shows its name instead.",
+                )
+                HelpHeading("One card at a time")
+                HelpText("The pencil beside a custom deck opens it card by card. Tap a card to give it an image or swap the one it has. The bundled deck cannot be changed.")
+                HelpHeading("Sharing a deck")
+                HelpText(
+                    "The download icon beside a custom deck saves it as one ZIP. Anyone with Arcana can add it with \"Import a deck from a ZIP\". An import is always added as a new deck and never replaces one you have.",
                 )
                 Text(
-                    "Bulk import from a folder",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "Tap \"Import a deck from a folder\" above. The folder you pick should contain image files named to match Arcana's imageRef convention. The convention is:\n\n" +
-                        "  • Major arcana: major_NN_name.jpg  (e.g. major_00_fool.jpg, major_21_world.jpg)\n" +
-                        "  • Minor arcana number cards: <suit>_NN_rank.jpg  (e.g. wands_01_ace.jpg, cups_05_five.jpg)\n" +
-                        "  • Minor arcana courts: <suit>_<rank>.jpg  (e.g. swords_page.jpg, pentacles_king.jpg)\n" +
-                        "  • Card back (optional): back.jpg\n\n" +
-                        "Suits: wands, cups, swords, pentacles. Extensions .jpg / .png / .webp all work; case doesn't matter. Missing files just render the text fallback for that card.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
-                Text(
-                    "Per-card override",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "After a deck is imported (or any time later), tap the pencil icon next to a CUSTOM deck row to open the per-card editor. Tap any individual card to replace just that card's image — useful for fixing one or two cards in an otherwise-good import without touching the rest. The pencil only appears for custom decks; bundled decks (e.g. Rider-Waite) are read-only.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
-                Text(
-                    "Share / move decks with ZIP",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "The download icon next to a custom deck packs its manifest + every card image into a single .zip you can save anywhere. Hand the .zip to anyone with Arcana — they tap \"Import a deck from a ZIP\" and pick the file. ZIP imports always land as fresh decks (won't overwrite anything you have).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
-                Text(
-                    "Files live in app-private storage and are wiped on uninstall — back them up if they're irreplaceable.",
+                    "Imported decks are stored inside the app and are removed if it is uninstalled. Export any you cannot replace.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -486,5 +450,20 @@ private fun HelpDialog(onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Got it") }
         },
+    )
+}
+
+@Composable
+private fun HelpHeading(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+}
+
+@Composable
+private fun HelpText(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
     )
 }
