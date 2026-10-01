@@ -1,0 +1,77 @@
+# Regenerates the committed baseline profile (app/src/release/generated/baselineProfiles/) on a
+# headless emulator and opens a pull request with the difference. Every release build already
+# carries the committed profile; this only refreshes which methods are in it, so it runs on
+# request and once a month rather than on every push.
+#
+# Never point this, or a local run, at a connected phone: the test harness uninstalls the app
+# when it finishes. The emulator Gradle manages in :baselineprofile is the only place it runs.
+name: Regenerate baseline profile
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 7 3 * *" # monthly, on the 3rd at 07:20 UTC
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-37.0 ndk;28.2.13676358 cmake;3.22.1
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Generate baseline profile
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          ./gradlew :app:generateBaselineProfile \
+            -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
+
+      - name: Keep the generated profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: baseline-profile
+          path: app/src/release/generated/baselineProfiles/
+
+      - name: Open a pull request if the profile changed
+        # main only: from another branch the pull request would carry every commit that branch
+        # has and main does not. There the artifact above is the result.
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet app/src/release/generated/baselineProfiles/; then
+            echo "Profile unchanged: nothing to do."
+            exit 0
+          fi
+          BRANCH="baseline-profile-refresh-$(date -u +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add app/src/release/generated/baselineProfiles/
+          git commit -m "Docs: refresh the baseline profile"
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "Refresh the baseline profile" \
+            --body "Monthly regeneration on the emulator. The committed profile is what every release build carries; merging ships the refreshed list of hot paths with the next nightly."

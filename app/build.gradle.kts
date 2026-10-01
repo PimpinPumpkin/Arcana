@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -81,6 +82,12 @@ dependencies {
     implementation(project(":feature:feature-journal"))
     implementation(project(":feature:feature-settings"))
     implementation(project(":service:service-ai"))
+
+    // Compiles the committed baseline profile ahead of time when the app is installed. Copies
+    // installed from a release page or Obtainium get no cloud profile from a store, and without
+    // this the first launches run interpreted and the card grid stutters.
+    implementation(libs.androidx.profileinstaller)
+    "baselineProfile"(project(":baselineprofile"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

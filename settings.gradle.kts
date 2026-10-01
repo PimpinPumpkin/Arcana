@@ -23,6 +23,7 @@ dependencyResolutionManagement {
 rootProject.name = "Arcana"
 
 include(":app")
+include(":baselineprofile")
 
 include(":core:core-common")
 include(":core:core-domain")
