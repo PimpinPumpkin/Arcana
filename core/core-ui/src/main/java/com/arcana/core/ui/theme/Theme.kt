@@ -2,6 +2,7 @@ package com.arcana.core.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -13,12 +14,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.arcana.core.domain.model.ThemeMode
 import com.arcana.core.domain.model.ThemePreset
+import com.materialkolor.hct.Hct
+import com.materialkolor.palettes.TonalPalette
+import com.materialkolor.scheme.DynamicScheme
+import com.materialkolor.scheme.Variant
 
 @Composable
 fun ArcanaTheme(
     preset: ThemePreset,
     themeMode: ThemeMode,
-    useDynamicColor: Boolean,
     content: @Composable () -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -28,19 +32,11 @@ fun ArcanaTheme(
         ThemeMode.DARK -> true
     }
 
-    val wantsDynamic = (useDynamicColor || preset.supportsDynamic) &&
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val colorScheme = if (wantsDynamic) {
-        val ctx = LocalContext.current
-        // Dynamic schemes are cheap (system-cached) but still memoize to avoid
-        // identity churn that can ripple through MaterialTheme readers.
-        remember(isDark, ctx) {
-            if (isDark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-        }
+    val colorScheme = if (preset.supportsDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val context = LocalContext.current
+        remember(isDark, context) { if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context) }
     } else {
-        // Static scheme construction does ~30 Color allocations and parses a half-
-        // dozen hex strings — trivially cacheable by preset id + isDark.
-        remember(preset.id, isDark) { buildColorScheme(preset, isDark) }
+        remember(preset, isDark) { schemeFor(preset, isDark) }
     }
 
     MaterialTheme(
@@ -51,73 +47,81 @@ fun ArcanaTheme(
     )
 }
 
-private fun buildColorScheme(
-    preset: ThemePreset,
-    isDark: Boolean,
-) = if (isDark) {
-    darkColorScheme(
-        primary = parseHex(preset.seedHex),
-        onPrimary = Color.White,
-        primaryContainer = parseHex(preset.seedHex).darken(0.5f),
-        onPrimaryContainer = Color.White,
-        secondary = parseHex(preset.secondaryHex),
-        onSecondary = Color.Black,
-        secondaryContainer = parseHex(preset.secondaryHex).darken(0.4f),
-        onSecondaryContainer = Color.White,
-        tertiary = parseHex(preset.tertiaryHex),
-        onTertiary = Color.Black,
-        tertiaryContainer = parseHex(preset.tertiaryHex).darken(0.4f),
-        onTertiaryContainer = Color.White,
-        background = ArcanaColors.NightVeil,
-        onBackground = Color(0xFFE8E1F2),
-        surface = ArcanaColors.NightVeil,
-        onSurface = Color(0xFFE8E1F2),
-        surfaceVariant = ArcanaColors.NightVeilContainer,
-        onSurfaceVariant = Color(0xFFCBC0DC),
-        outline = Color(0xFF6F6580),
+/**
+ * A whole Material color scheme from a theme's three colors. Each color becomes a tonal palette,
+ * and every role (containers, surfaces at each height, outlines, the colors that sit on them) is
+ * a tone picked from one of those, so text always has contrast and nothing is left at the
+ * library's stock purple.
+ */
+fun schemeFor(preset: ThemePreset, dark: Boolean): ColorScheme {
+    val seed = argb(preset.seedHex)
+    val tint = Hct.fromInt(argb(preset.neutralHex ?: preset.seedHex)).hue
+    val s = DynamicScheme(
+        Hct.fromInt(seed),
+        Variant.TONAL_SPOT,
+        dark,
+        0.0,
+        TonalPalette.fromInt(seed),
+        TonalPalette.fromInt(argb(preset.secondaryHex)),
+        TonalPalette.fromInt(argb(preset.tertiaryHex)),
+        TonalPalette.fromHueAndChroma(tint, SURFACE_CHROMA),
+        TonalPalette.fromHueAndChroma(tint, SURFACE_VARIANT_CHROMA),
     )
-} else {
-    lightColorScheme(
-        primary = parseHex(preset.seedHex),
-        onPrimary = Color.White,
-        primaryContainer = parseHex(preset.seedHex).lighten(0.7f),
-        onPrimaryContainer = parseHex(preset.seedHex).darken(0.6f),
-        secondary = parseHex(preset.secondaryHex),
-        onSecondary = Color.White,
-        secondaryContainer = parseHex(preset.secondaryHex).lighten(0.7f),
-        onSecondaryContainer = parseHex(preset.secondaryHex).darken(0.6f),
-        tertiary = parseHex(preset.tertiaryHex),
-        onTertiary = Color.White,
-        tertiaryContainer = parseHex(preset.tertiaryHex).lighten(0.7f),
-        onTertiaryContainer = parseHex(preset.tertiaryHex).darken(0.6f),
-        background = Color(0xFFFAF6F0),
-        onBackground = Color(0xFF1F1B16),
-        surface = Color(0xFFFAF6F0),
-        onSurface = Color(0xFF1F1B16),
-        surfaceVariant = Color(0xFFEDE6DA),
-        onSurfaceVariant = Color(0xFF4D463A),
-        outline = Color(0xFF7C7468),
+    return (if (dark) darkColorScheme() else lightColorScheme()).copy(
+        primary = Color(s.primary),
+        onPrimary = Color(s.onPrimary),
+        primaryContainer = Color(s.primaryContainer),
+        onPrimaryContainer = Color(s.onPrimaryContainer),
+        inversePrimary = Color(s.inversePrimary),
+        secondary = Color(s.secondary),
+        onSecondary = Color(s.onSecondary),
+        secondaryContainer = Color(s.secondaryContainer),
+        onSecondaryContainer = Color(s.onSecondaryContainer),
+        tertiary = Color(s.tertiary),
+        onTertiary = Color(s.onTertiary),
+        tertiaryContainer = Color(s.tertiaryContainer),
+        onTertiaryContainer = Color(s.onTertiaryContainer),
+        background = Color(s.background),
+        onBackground = Color(s.onBackground),
+        surface = Color(s.surface),
+        onSurface = Color(s.onSurface),
+        surfaceVariant = Color(s.surfaceVariant),
+        onSurfaceVariant = Color(s.onSurfaceVariant),
+        surfaceTint = Color(s.surfaceTint),
+        inverseSurface = Color(s.inverseSurface),
+        inverseOnSurface = Color(s.inverseOnSurface),
+        error = Color(s.error),
+        onError = Color(s.onError),
+        errorContainer = Color(s.errorContainer),
+        onErrorContainer = Color(s.onErrorContainer),
+        outline = Color(s.outline),
+        outlineVariant = Color(s.outlineVariant),
+        scrim = Color(s.scrim),
+        surfaceBright = Color(s.surfaceBright),
+        surfaceDim = Color(s.surfaceDim),
+        surfaceContainer = Color(s.surfaceContainer),
+        surfaceContainerHigh = Color(s.surfaceContainerHigh),
+        surfaceContainerHighest = Color(s.surfaceContainerHighest),
+        surfaceContainerLow = Color(s.surfaceContainerLow),
+        surfaceContainerLowest = Color(s.surfaceContainerLowest),
+        primaryFixed = Color(s.primaryFixed),
+        primaryFixedDim = Color(s.primaryFixedDim),
+        onPrimaryFixed = Color(s.onPrimaryFixed),
+        onPrimaryFixedVariant = Color(s.onPrimaryFixedVariant),
+        secondaryFixed = Color(s.secondaryFixed),
+        secondaryFixedDim = Color(s.secondaryFixedDim),
+        onSecondaryFixed = Color(s.onSecondaryFixed),
+        onSecondaryFixedVariant = Color(s.onSecondaryFixedVariant),
+        tertiaryFixed = Color(s.tertiaryFixed),
+        tertiaryFixedDim = Color(s.tertiaryFixedDim),
+        onTertiaryFixed = Color(s.onTertiaryFixed),
+        onTertiaryFixedVariant = Color(s.onTertiaryFixedVariant),
     )
 }
 
-private fun parseHex(hex: String): Color {
-    val clean = hex.removePrefix("#")
-    val r = clean.substring(0, 2).toInt(16)
-    val g = clean.substring(2, 4).toInt(16)
-    val b = clean.substring(4, 6).toInt(16)
-    return Color(r, g, b)
-}
+// How strongly backgrounds take on the theme's hue. Material's own default is 6 and 8; a little
+// more gives each theme a paper of its own.
+private const val SURFACE_CHROMA = 8.0
+private const val SURFACE_VARIANT_CHROMA = 12.0
 
-private fun Color.darken(factor: Float): Color = Color(
-    red = red * (1f - factor),
-    green = green * (1f - factor),
-    blue = blue * (1f - factor),
-    alpha = alpha,
-)
-
-private fun Color.lighten(factor: Float): Color = Color(
-    red = red + (1f - red) * factor,
-    green = green + (1f - green) * factor,
-    blue = blue + (1f - blue) * factor,
-    alpha = alpha,
-)
+private fun argb(hex: String): Int = (0xFF000000 or hex.removePrefix("#").toLong(16)).toInt()

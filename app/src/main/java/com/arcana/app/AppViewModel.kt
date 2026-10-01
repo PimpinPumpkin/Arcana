@@ -2,6 +2,7 @@ package com.arcana.app
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arcana.core.data.repository.CustomDeckStore
 import com.arcana.core.data.repository.ThemePresets
 import com.arcana.core.domain.model.AppearanceSettings
 import com.arcana.core.domain.model.ThemeMode
@@ -17,24 +18,23 @@ import javax.inject.Inject
 data class AppearanceState(
     val preset: ThemePreset = ThemePresets.MYSTIC_TWILIGHT,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val useDynamicColor: Boolean = false,
 )
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
     settingsRepository: SettingsRepository,
+    customDeckStore: CustomDeckStore,
 ) : ViewModel() {
 
     val appearance: StateFlow<AppearanceState> = settingsRepository.appearance
         .map { it.toUi() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppearanceState())
 
-    private fun AppearanceSettings.toUi(): AppearanceState {
-        val preset = ThemePresets.ALL.firstOrNull { it.id == themeId } ?: ThemePresets.MYSTIC_TWILIGHT
-        return AppearanceState(
-            preset = preset,
-            themeMode = themeMode,
-            useDynamicColor = useDynamicColor,
-        )
-    }
+    /** Rises when an imported deck's images change, so cards on screen reload them. */
+    val deckVersion: StateFlow<Int> = customDeckStore.version
+
+    private fun AppearanceSettings.toUi(): AppearanceState = AppearanceState(
+        preset = ThemePresets.ALL.firstOrNull { it.id == themeId } ?: ThemePresets.MYSTIC_TWILIGHT,
+        themeMode = themeMode,
+    )
 }
