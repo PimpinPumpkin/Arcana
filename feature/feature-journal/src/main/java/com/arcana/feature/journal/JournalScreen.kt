@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -25,19 +27,25 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcana.core.domain.model.Reading
 import com.arcana.core.domain.model.ReadingKind
+import com.arcana.core.ui.util.cardCount
 import java.text.DateFormat
 import java.util.Date
 
@@ -49,6 +57,7 @@ fun JournalScreen(
     viewModel: JournalViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var pendingDelete by remember { mutableStateOf<Reading?>(null) }
 
     Scaffold(
         topBar = {
@@ -91,6 +100,21 @@ fun JournalScreen(
             return@Scaffold
         }
 
+        pendingDelete?.let { reading ->
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Delete this reading?") },
+                text = { Text("${reading.spreadName}, ${formatDate(reading.timestampEpochMs)}. The cards, the reading and your notes are removed. This cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deleteReading(reading.id)
+                        pendingDelete = null
+                    }) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Keep") } },
+            )
+        }
+
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
@@ -102,7 +126,7 @@ fun JournalScreen(
                 JournalEntry(
                     reading = reading,
                     onClick = { onReadingClick(reading.id) },
-                    onDelete = { viewModel.deleteReading(reading.id) },
+                    onDelete = { pendingDelete = reading },
                 )
             }
         }
@@ -126,11 +150,14 @@ private fun JournalEntry(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // A long spread name wraps; it does not get to squeeze the badge beside it.
                     Text(
                         reading.spreadName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(end = 8.dp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp),
                     )
                     KindBadge(kind = reading.kind)
                 }
@@ -149,14 +176,14 @@ private fun JournalEntry(
                     )
                 }
                 Text(
-                    "${reading.drawnCards.size} cards",
+                    cardCount(reading.drawnCards.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.journal_delete))
+                Icon(Icons.Default.Delete, contentDescription = "Delete this reading")
             }
         }
     }
@@ -179,8 +206,8 @@ private fun KindBadge(kind: ReadingKind) {
             .padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = onContainer, modifier = Modifier.padding(end = 4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = onContainer)
+        Icon(icon, contentDescription = null, tint = onContainer, modifier = Modifier.padding(end = 4.dp).size(14.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = onContainer, maxLines = 1, softWrap = false)
     }
 }
 

@@ -138,10 +138,8 @@ fun ArcanaNavHost(
         composable(
             route = Routes.JOURNAL_DETAIL_PATTERN,
             arguments = listOf(navArgument(Routes.ARG_READING_ID) { type = NavType.StringType }),
-        ) { backStack ->
-            val readingId = backStack.arguments?.getString(Routes.ARG_READING_ID) ?: return@composable
+        ) {
             JournalDetailScreen(
-                readingId = readingId,
                 onBack = { navController.popBackStack() },
                 onCardClick = { navController.navigate(Routes.cardDetail(it)) },
             )
