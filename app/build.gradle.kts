@@ -2,7 +2,6 @@ import java.io.File
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.hilt)
@@ -10,26 +9,25 @@ plugins {
 
 android {
     namespace = "com.arcana.app"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.arcana.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.6.2"
+        // CI passes -PappVersionCode / -PappVersionName, derived from the workflow run number so
+        // every channel sits on one rising line. Local builds stay at 1 on purpose: lower than any
+        // published build, so a phone that had a dev build can always take a real one.
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.7.0-dev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables { useSupportLibrary = true }
     }
 
-    // Real release signingConfig, populated from env vars set by CI:
-    //   ARCANA_KEYSTORE_PATH       — absolute path to a decoded .jks file
-    //   ARCANA_KEYSTORE_PASSWORD   — store password (also used as key password)
-    //   ARCANA_KEY_ALIAS           — alias inside the keystore (defaults to "arcana")
-    // When those aren't set (local dev), we fall back to the debug keystore
-    // below — local builds still work, they're just signed with a different,
-    // per-machine cert (which is fine for `adb install` during development).
+    // Release signing comes from the environment (CI secrets, or exported by hand). Without it the
+    // release build falls back to the debug key, which still installs for testing but cannot
+    // update a properly signed copy.
+    //   ARCANA_KEYSTORE_PATH / ARCANA_KEYSTORE_PASSWORD / ARCANA_KEY_ALIAS
     signingConfigs {
         create("releaseFromEnv") {
             val path = System.getenv("ARCANA_KEYSTORE_PATH")
@@ -47,15 +45,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            val envSigning = signingConfigs.getByName("releaseFromEnv")
-            signingConfig = if (envSigning.storeFile?.exists() == true) {
-                envSigning
-            } else {
-                // Local dev path: per-machine debug keystore. The Obtainium
-                // upgrade conflict only matters between releases that *both*
-                // come from CI, so this fallback is fine for development.
-                signingConfigs.getByName("debug")
-            }
+            val fromEnv = signingConfigs.getByName("releaseFromEnv")
+            signingConfig = if (fromEnv.storeFile?.exists() == true) fromEnv else signingConfigs.getByName("debug")
         }
     }
 
@@ -64,23 +55,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-        jniLibs {
-            // Force the AGP-default `extractNativeLibs=false` off. We need
-            // the .so files extracted to a real filesystem path at install
-            // time, because llama.cpp's ggml_backend_load_all_from_path
-            // uses opendir() to enumerate the CPU-variant backends. With
-            // extraction off, nativeLibraryDir resolves to an APK-internal
-            // virtual path that opendir can't walk, no backends load, and
-            // model load fails with "no compatible backend".
-            useLegacyPackaging = true
-        }
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
+
+    packaging {
+        resources.excludes += listOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
+        // llama.cpp finds its per-CPU math libraries by listing the app's native library folder,
+        // which only works when the libraries are extracted at install time.
+        jniLibs.useLegacyPackaging = true
+    }
+
+    testOptions.unitTests.isReturnDefaultValues = true
 }
 
 dependencies {
@@ -110,8 +97,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.hilt.android)
-    implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.viewmodel.compose)
     ksp(libs.hilt.compiler)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    testImplementation(libs.junit)
 }
