@@ -9,7 +9,7 @@
 *.sh text eol=lf
 gradlew text eol=lf
 
-# Binary assets — don't try to diff or normalize.
+# Binary assets: don't try to diff or normalize.
 *.jpg binary
 *.png binary
 *.webp binary

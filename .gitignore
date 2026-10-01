@@ -1,39 +1,18 @@
-# Gradle
-.gradle/
-**/build/
-!gradle/wrapper/gradle-wrapper.jar
-!gradle/wrapper/gradle-wrapper.properties
-
-# IntelliJ / Android Studio
 *.iml
-.idea/
-*.ipr
-*.iws
-out/
-gen/
-.cxx/
-.externalNativeBuild/
-captures/
-
-# Local config — must NOT be committed (paths are machine-specific)
+.gradle/
+.kotlin/
 local.properties
-
-# Generated APKs and signing
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
 *.apk
 *.aab
-*.dex
-*.keystore
+keystore.properties
 *.jks
-release/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs / temp
+*.keystore
 *.log
-*.bak
-*.tmp
-
-# Recovery script's transcript-of-attempts (Windows-only)
-build-with-recovery.log
+# Written by CI from the commit log just before a release build; local builds have none.
+app/src/main/assets/whatsnew.txt
