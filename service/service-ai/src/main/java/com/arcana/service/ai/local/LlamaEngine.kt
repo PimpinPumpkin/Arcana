@@ -1,131 +1,178 @@
 package com.arcana.service.ai.local
 
+import android.content.ComponentCallbacks2
 import android.content.Context
-import com.arcana.core.common.DispatcherProvider
+import android.content.res.Configuration
+import android.os.Build
+import android.os.Process
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Process-singleton wrapper around [LlamaBridge].
+ * Runs the on-device model. One model is kept loaded between readings, since loading takes a
+ * second or two, and dropped when Android asks for memory back while the app is in the background.
  *
- * - Initializes the native backend exactly once per process (lazy on first
- *   model load — we only want to pay the cost if the user actually opts in
- *   to local inference).
- * - Caches one loaded model. Switching models or reloading discards the
- *   previous handle.
- * - Serializes load/free/generate via a [Mutex] because llama_context isn't
- *   thread-safe; back-to-back generations must finish their token loop
- *   before another starts.
- * - Exposes generation as a [Flow] of token pieces. Cancelling the flow's
- *   collector calls back into the native side via [LlamaBridge.nativeStopGeneration]
- *   so we don't keep grinding tokens we'll throw away.
+ * Everything goes through [converse], which holds a lock for as long as its block runs. That is
+ * what keeps two readings from ever using the model at once, and a model from being unloaded or
+ * swapped while one is writing.
  */
 @Singleton
 class LlamaEngine @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val dispatchers: DispatcherProvider,
 ) {
-
     private val lock = Mutex()
-    private val initialized = AtomicBoolean(false)
-    private var sessionHandle: Long = 0L
-    private var loadedFile: File? = null
 
-    private fun ensureBackendInitialized() {
-        if (initialized.compareAndSet(false, true)) {
-            LlamaBridge.nativeInit(context.applicationInfo.nativeLibraryDir)
-        }
+    // llama.cpp's context belongs to one thread, so all native calls are made on this one.
+    private val worker = Executors.newSingleThreadExecutor { Thread(it, "arcana-llm") }.asCoroutineDispatcher()
+    private val scope = CoroutineScope(SupervisorJob() + worker)
+
+    private var started = false
+    private var handle = 0L
+    private var loaded: File? = null
+
+    /** False on a phone the native library was not built for (a 32-bit system, an x86 emulator). */
+    val supported: Boolean = Process.is64Bit() && Build.SUPPORTED_64_BIT_ABIS.contains("arm64-v8a")
+
+    init {
+        context.registerComponentCallbacks(object : ComponentCallbacks2 {
+            override fun onTrimMemory(level: Int) {
+                if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) unloadIfIdle()
+            }
+
+            override fun onConfigurationChanged(newConfig: Configuration) = Unit
+
+            @Deprecated("Deprecated in Java")
+            override fun onLowMemory() = unloadIfIdle()
+        })
     }
 
     /**
-     * Load [file] into a fresh native session. If [file] is already loaded,
-     * this is a no-op and returns true. Returns false if the model couldn't
-     * be loaded (corrupt file, OOM, unsupported architecture).
+     * Loads [file] if it is not the model already in memory, then runs [block] with it.
+     *
+     * @throws IOException if this phone cannot run the model or the file will not load
      */
-    suspend fun loadModel(file: File, nCtx: Int = DEFAULT_N_CTX): Boolean = lock.withLock {
-        withContext(dispatchers.io) {
-            ensureBackendInitialized()
-            if (sessionHandle != 0L && loadedFile == file) return@withContext true
-
-            // Tear down any previous session before loading a new one — a
-            // 0.5B model is ~500 MB resident, two of them would push budget
-            // phones into OOM territory.
-            disposeLocked()
-
-            val handle = LlamaBridge.nativeLoadModel(file.absolutePath, nCtx)
-            if (handle == 0L) return@withContext false
-            sessionHandle = handle
-            loadedFile = file
-            true
+    suspend fun <T> converse(file: File, block: suspend Conversation.() -> T): T = lock.withLock {
+        withContext(worker) {
+            if (!supported) throw IOException("The on-device model needs a 64-bit ARM phone.")
+            if (!started) {
+                LlamaBridge.nativeInit(context.applicationInfo.nativeLibraryDir)
+                started = true
+            }
+            if (handle == 0L || loaded != file) {
+                free()
+                val (threads, batchThreads) = Threads.pick()
+                handle = LlamaBridge.nativeLoad(file.absolutePath, CONTEXT_TOKENS, threads, batchThreads)
+                if (handle == 0L) throw IOException("The model file could not be loaded. It may be damaged or of a kind this version cannot run.")
+                loaded = file
+            }
+            Conversation(handle).block()
         }
     }
 
-    /** True iff a model is currently loaded in the native session. */
-    val isReady: Boolean get() = sessionHandle != 0L
-
-    /**
-     * Stream tokens for [prompt] until the model emits EOS or hits [maxTokens].
-     * The collecting coroutine is the source of truth for liveness — if the
-     * collector is cancelled we tell the native side to stop sampling.
-     */
-    fun generate(prompt: String, maxTokens: Int = DEFAULT_MAX_TOKENS): Flow<String> = flow {
-        val handle = sessionHandle
-        if (handle == 0L) throw IllegalStateException("LlamaEngine: no model loaded")
-
-        val rc = LlamaBridge.nativeStartGeneration(handle, prompt, maxTokens)
-        if (rc != 0) {
-            val message = when (rc) {
-                -5 -> "This spread is too large for the local model's context window. Try a smaller spread or use Claude."
-                else -> "Local model couldn't start generation (rc=$rc)."
+    /** Frees the model unless a reading is being written right now. */
+    fun unloadIfIdle() {
+        scope.launch {
+            if (lock.tryLock()) {
+                try {
+                    free()
+                } finally {
+                    lock.unlock()
+                }
             }
-            throw IOException(message)
-        }
-
-        try {
-            while (currentCoroutineContext().isActive) {
-                val piece = LlamaBridge.nativeNextToken(handle) ?: break
-                emit(piece)
-            }
-        } finally {
-            LlamaBridge.nativeStopGeneration(handle)
-        }
-    }.flowOn(dispatchers.io)
-
-    /** Free the loaded model and the native context. Idempotent. */
-    suspend fun unload() = lock.withLock { disposeLocked() }
-
-    private fun disposeLocked() {
-        if (sessionHandle != 0L) {
-            LlamaBridge.nativeFreeModel(sessionHandle)
-            sessionHandle = 0L
-            loadedFile = null
         }
     }
 
-    companion object {
-        // 2048 was tight for big spreads — Celtic Cross prompts ~1300 tokens
-        // (system + 10 cards) and our 800-token generation budget pushed
-        // total context use to ~2100, which crashed llama.cpp on some
-        // devices. 4096 leaves comfortable headroom for the largest custom
-        // spreads (4×6 grid = up to 24 positions) at the cost of ~300 MB
-        // extra KV-cache memory on the 0.5B model.
-        private const val DEFAULT_N_CTX = 4096
-        // 1024 tokens covers a 10-card Celtic Cross at the new brevity
-        // budget (2–3 sentences/card ≈ 50 tokens, plus overview/closing/
-        // headings ≈ 200 tokens). 800 was getting truncated mid-generation
-        // on big spreads, leaving the last few cards uncovered.
-        private const val DEFAULT_MAX_TOKENS = 1024
+    /** Frees the model if [file] is the one loaded, waiting for any reading to finish first. */
+    suspend fun release(file: File) = lock.withLock {
+        withContext(worker) { if (loaded == file) free() }
+    }
+
+    private fun free() {
+        if (handle != 0L) LlamaBridge.nativeFree(handle)
+        handle = 0L
+        loaded = null
+    }
+
+    /** One conversation with the loaded model. Only valid inside [converse]. */
+    class Conversation internal constructor(private val handle: Long) {
+        fun begin(system: String, temperature: Float, topK: Int, topP: Float, repeatPenalty: Float) =
+            LlamaBridge.nativeBegin(handle, system.toByteArray(), temperature, topK, topP, repeatPenalty)
+
+        /**
+         * Says [text] to the model and opens its reply.
+         *
+         * @param reserve tokens to keep free for the reply
+         * @return how many tokens are waiting to be read with [feed], or null if the conversation
+         * no longer fits in the model's context
+         */
+        fun user(text: String, reserve: Int): Int? {
+            val waiting = LlamaBridge.nativeUser(handle, text.toByteArray(), reserve)
+            if (waiting == CONTEXT_FULL) return null
+            if (waiting < 0) throw IOException("The model could not read the prompt ($waiting).")
+            return waiting
+        }
+
+        /** Has the model read up to [maxTokens] more of what is waiting. @return how many are left */
+        fun feed(maxTokens: Int): Int {
+            val left = LlamaBridge.nativeFeed(handle, maxTokens)
+            if (left < 0) throw IOException("The model failed while reading ($left).")
+            return left
+        }
+
+        /** Rules, in llama.cpp's GBNF, that the next reply must follow. Empty for none. */
+        fun grammar(gbnf: String) {
+            if (!LlamaBridge.nativeGrammar(handle, gbnf.toByteArray())) throw IOException("The reply rules did not parse.")
+        }
+
+        /** The next piece of the reply as UTF-8 bytes, or null when the reply is finished. */
+        fun next(): ByteArray? = LlamaBridge.nativeNext(handle)
+
+        /** Tells the model's side of the conversation what it ended up saying. */
+        fun reply(text: String) = LlamaBridge.nativeReply(handle, text.toByteArray())
+    }
+
+    private companion object {
+        // A twelve-card spread fits with room to spare. One much larger than that is carried on
+        // in a fresh conversation partway through (see LocalLlmInterpreter).
+        const val CONTEXT_TOKENS = 4096
+
+        // Session::CONTEXT_FULL in arcana-session.h.
+        const val CONTEXT_FULL = -2
+    }
+}
+
+/**
+ * How many threads to use. Phones mix fast and slow cores. Measured on a Pixel 4a 5G (two fast,
+ * six slow): writing is quickest on the fast cores alone, since each token waits on the slowest
+ * thread, while reading the prompt is work that divides well and is quickest on all of them.
+ */
+internal object Threads {
+    /** @return threads for writing, threads for reading */
+    fun pick(): Pair<Int, Int> {
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val speeds = (0 until cores).mapNotNull { cpu ->
+            runCatching { File("/sys/devices/system/cpu/cpu$cpu/cpufreq/cpuinfo_max_freq").readText().trim().toLong() }.getOrNull()
+        }
+        return pick(cores, speeds)
+    }
+
+    fun pick(cores: Int, speeds: List<Long>): Pair<Int, Int> {
+        val slowest = speeds.minOrNull()
+        val fast = if (slowest == null || speeds.size < cores) cores / 2 else speeds.count { it > slowest }
+        // All cores the same speed (or unknown): half of them, as the rest are needed elsewhere.
+        val writing = (if (fast == 0) cores / 2 else fast).coerceIn(2, 4).coerceAtMost(cores)
+        val reading = cores.coerceIn(writing, 8)
+        return writing to reading
     }
 }

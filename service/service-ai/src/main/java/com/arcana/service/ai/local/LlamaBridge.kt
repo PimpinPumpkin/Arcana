@@ -1,42 +1,35 @@
 package com.arcana.service.ai.local
 
 /**
- * Kotlin-side bridge to the native llama.cpp wrapper (`libarcana-llama.so`).
+ * The native side of the on-device model (`libarcana-llama.so`, built from `src/main/cpp`). Every
+ * function here maps to a method of the session in `arcana-session.h`, which documents each.
  *
- * Each function maps 1:1 to a `Java_com_arcana_service_ai_local_LlamaBridge_*`
- * symbol in `arcana-llama.cpp`. See the header in that file for the contract
- * around session handles and threading.
- *
- * Most callers should not touch this directly — go through [LlamaEngine],
- * which serializes access and returns proper Kotlin [kotlinx.coroutines.flow.Flow]s.
+ * Text is passed as UTF-8 bytes. Nothing outside [LlamaEngine] should call this: a session may
+ * only be used from one thread, and the engine is what guarantees that.
  */
 internal object LlamaBridge {
     init {
         System.loadLibrary("arcana-llama")
     }
 
-    @JvmStatic
-    external fun nativeGreeting(): String
+    @JvmStatic external fun nativeInit(nativeLibDir: String)
 
-    @JvmStatic
-    external fun nativeInit(nativeLibDir: String)
+    /** @return a session handle, or 0 if the file is not a model llama.cpp can run */
+    @JvmStatic external fun nativeLoad(path: String, contextTokens: Int, threads: Int, batchThreads: Int): Long
 
-    /** Returns a non-zero session handle on success, or 0 on failure. */
-    @JvmStatic
-    external fun nativeLoadModel(modelPath: String, nCtx: Int): Long
+    @JvmStatic external fun nativeFree(handle: Long)
 
-    @JvmStatic
-    external fun nativeFreeModel(handle: Long)
+    @JvmStatic external fun nativeBegin(handle: Long, system: ByteArray, temperature: Float, topK: Int, topP: Float, repeatPenalty: Float)
 
-    /** Returns 0 on success, negative error code otherwise. */
-    @JvmStatic
-    external fun nativeStartGeneration(handle: Long, prompt: String, maxTokens: Int): Int
+    @JvmStatic external fun nativeUser(handle: Long, text: ByteArray, reserve: Int): Int
 
-    /** Returns the next token's UTF-8 piece, or null on EOS / cap / error. */
-    @JvmStatic
-    external fun nativeNextToken(handle: Long): String?
+    @JvmStatic external fun nativeFeed(handle: Long, maxTokens: Int): Int
 
-    /** Sets a stop flag the next [nativeNextToken] call observes. Thread-safe. */
-    @JvmStatic
-    external fun nativeStopGeneration(handle: Long)
+    @JvmStatic external fun nativeGrammar(handle: Long, gbnf: ByteArray): Boolean
+
+    @JvmStatic external fun nativeNext(handle: Long): ByteArray?
+
+    @JvmStatic external fun nativeReply(handle: Long, text: ByteArray)
+
+    @JvmStatic external fun nativeContextLeft(handle: Long): Int
 }

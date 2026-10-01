@@ -11,41 +11,16 @@ android {
 
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Most Android phones from the last decade are arm64-v8a. We skip
-        // x86_64 (emulator-only) and 32-bit ABIs to keep the APK small —
-        // the model is big enough on its own.
+        // The on-device model is built for 64-bit ARM only. A phone running a 32-bit system
+        // still gets the rest of the app; LlamaEngine reports the model as unsupported there.
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
-
-        externalNativeBuild {
-            cmake {
-                arguments += "-DCMAKE_BUILD_TYPE=Release"
-                arguments += "-DBUILD_SHARED_LIBS=ON"
-
-                // Build the helpers in llama.cpp/common/ that we use for
-                // sampling and chat templates in Phase 3. Skip the rest.
-                arguments += "-DLLAMA_BUILD_COMMON=ON"
-                arguments += "-DLLAMA_BUILD_TESTS=OFF"
-                arguments += "-DLLAMA_BUILD_EXAMPLES=OFF"
-                arguments += "-DLLAMA_BUILD_SERVER=OFF"
-                arguments += "-DLLAMA_BUILD_TOOLS=OFF"
-                arguments += "-DLLAMA_CURL=OFF"
-
-                // GGML knobs aligned with llama.cpp's own Android example:
-                // GGML_NATIVE off because we're cross-compiling for ARM,
-                // CPU_ALL_VARIANTS + BACKEND_DL so the right kernel is
-                // chosen at runtime per device, LLAMAFILE off since it's
-                // x86-only.
-                arguments += "-DGGML_NATIVE=OFF"
-                arguments += "-DGGML_BACKEND_DL=ON"
-                arguments += "-DGGML_CPU_ALL_VARIANTS=ON"
-                arguments += "-DGGML_LLAMAFILE=OFF"
-            }
-        }
     }
 
+    // llama.cpp, built from the submodule. The options are in src/main/cpp/CMakeLists.txt.
     ndkVersion = "28.2.13676358"
     externalNativeBuild {
         cmake {
@@ -59,20 +34,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    packaging {
-        resources {
-            // llama.cpp's `common` static lib pulls in some metadata files
-            // that are duplicated across deps; drop them.
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
+    testOptions.unitTests.isReturnDefaultValues = true
 }
 
 dependencies {
     implementation(project(":core:core-common"))
     implementation(project(":core:core-domain"))
-    implementation(project(":core:core-data"))
 
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.service)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
@@ -80,4 +50,9 @@ dependencies {
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.junit)
 }
