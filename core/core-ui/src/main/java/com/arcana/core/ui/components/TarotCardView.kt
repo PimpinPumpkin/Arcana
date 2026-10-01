@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -27,29 +29,29 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.arcana.core.domain.model.Arcana
 import com.arcana.core.domain.model.Card
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.Orientation
 import com.arcana.core.ui.theme.ArcanaColors
 import com.arcana.core.ui.theme.CardShapes
-import com.arcana.core.ui.util.DeckAssetResolver
-import com.arcana.core.ui.util.LocalDeckHasArt
-import androidx.compose.ui.platform.LocalContext
+import com.arcana.core.ui.util.deckArtIndex
+import com.arcana.core.ui.util.scaleToFitWords
+import com.arcana.core.ui.util.scaledBy
 
 /**
- * A face-up tarot card with optional reversed rotation.
- * Falls back to a styled name plate if the deck art is missing.
- *
- * Perf: when the surrounding deck has no bundled art (the default before the
- * user drops in scans), this composable skips Coil entirely and just renders
- * the static fallback. Without this, every card item in a 78-card grid spins up
- * a new image request that fails — ruinous for scrolling perf.
+ * A face-up tarot card, turned upside down when reversed. A card the deck has no image for shows
+ * its name on a plain plate instead.
  */
 @Composable
 fun TarotCardView(
@@ -59,8 +61,14 @@ fun TarotCardView(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     showLabel: Boolean = false,
+    /** The red arrow badge on a reversed card. Smaller on small cards so it leaves the art visible. */
+    reversedBadgeSize: Dp = 26.dp,
 ) {
-    val deckHasArt = LocalDeckHasArt.current(deck.id)
+    val index = deckArtIndex()
+    val version = index.version
+    val uri = remember(deck.id, card.imageRef, version) { index.cardUri(deck, card.imageRef) }
+    // A file that is listed but will not decode falls back to the plate too.
+    var broken by remember(uri) { mutableStateOf(false) }
     val isReversed = orientation == Orientation.REVERSED
     var tapCounter by remember { mutableIntStateOf(0) }
 
@@ -70,10 +78,7 @@ fun TarotCardView(
             .shadow(8.dp, CardShapes.tarotCard)
             .clip(CardShapes.tarotCard)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            // Reversed cards get a thick red outline so they're spottable
-            // at a glance even at the small sizes that show up in dense
-            // spreads (Celtic Cross, Year Ahead). Border lives on the outer
-            // box, so it doesn't rotate with the art.
+            // The outline is on the outer box, so it does not turn with the art.
             .border(
                 width = if (isReversed) 2.5.dp else 1.dp,
                 color = if (isReversed) ArcanaColors.ReversedRibbon else MaterialTheme.colorScheme.outline,
@@ -87,28 +92,21 @@ fun TarotCardView(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Rotate the inner content (the art / fallback) when reversed.
-        // Avoid graphicsLayer when upright so we don't allocate a layer per item.
+        // No layer for an upright card: one per card adds up in a 78-card grid.
         val artModifier = Modifier
             .fillMaxSize()
             .let { if (isReversed) it.graphicsLayer { rotationZ = 180f } else it }
 
         Box(modifier = artModifier) {
-            if (deckHasArt) {
+            if (uri != null && !broken) {
                 val context = LocalContext.current
-                // Memoize the ImageRequest by card+deck so we don't allocate a fresh
-                // builder on every recomposition during scroll.
-                val request = remember(card.id, deck.id, context) {
+                val request = remember(uri, version, context) {
                     ImageRequest.Builder(context)
-                        .data(DeckAssetResolver.fileUri(deck, card))
+                        .data(uri)
                         .crossfade(false)
-                        .memoryCacheKey("arcana-${deck.id}-${card.id}")
-                        // The asset already lives on disk inside the APK — Coil
-                        // disk-caching it again is redundant IO that can stutter
-                        // first-frame.
+                        .memoryCacheKey("arcana-${deck.id}-${card.id}-$version")
+                        // Already a local file: a second copy in Coil's disk cache is wasted IO.
                         .diskCachePolicy(CachePolicy.DISABLED)
-                        // Tarot art tolerates RGB_565 fine; halves bitmap memory
-                        // and decode cost.
                         .allowRgb565(true)
                         .build()
                 }
@@ -116,6 +114,7 @@ fun TarotCardView(
                     model = request,
                     contentDescription = card.name,
                     contentScale = ContentScale.Crop,
+                    onError = { broken = true },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -126,7 +125,7 @@ fun TarotCardView(
             CardNamePlate(name = card.name)
         }
         if (isReversed) {
-            ReversedRibbon()
+            ReversedBadge(reversedBadgeSize)
         }
         if (tapCounter > 0) {
             CardSparkleEmitter(triggerKey = tapCounter)
@@ -134,32 +133,35 @@ fun TarotCardView(
     }
 }
 
+/** What a card shows when the deck has no picture for it: its number, if it has one, and its name. */
 @Composable
 private fun CardArtFallback(card: Card) {
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(8.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = card.arcana.displayLabel,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
-            )
+        val inset = maxWidth * 0.08f
+        val measurer = rememberTextMeasurer()
+        val room = with(LocalDensity.current) { (maxWidth - inset * 2).toPx() }
+        val base = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+        // Lettering sized to the card, so a long name is never broken mid-word on a small one.
+        val nameStyle = remember(card.name, room, base) { base.scaledBy(measurer.scaleToFitWords(card.name, base, room)) }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(inset)) {
+            (card.arcana as? Arcana.Major)?.let {
+                Text(
+                    text = it.displayLabel,
+                    style = nameStyle.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Text(
                 text = card.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                style = nameStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
@@ -191,16 +193,16 @@ private fun CardNamePlate(name: String) {
 }
 
 @Composable
-private fun ReversedRibbon() {
+private fun ReversedBadge(size: Dp) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(6.dp),
+            .padding(size * 0.2f),
         contentAlignment = Alignment.TopStart,
     ) {
         Box(
             modifier = Modifier
-                .size(26.dp)
+                .size(size)
                 .shadow(2.dp, CircleShape)
                 .clip(CircleShape)
                 .background(ArcanaColors.ReversedRibbon),
@@ -210,7 +212,7 @@ private fun ReversedRibbon() {
                 imageVector = Icons.Default.ArrowDownward,
                 contentDescription = "Reversed",
                 tint = Color.White,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(size * 0.7f),
             )
         }
     }

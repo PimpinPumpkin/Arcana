@@ -57,6 +57,8 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.arcana.core.domain.model.Card
+import com.arcana.core.domain.model.DeckArt
+import com.arcana.core.ui.util.deckArtIndex
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,9 +145,8 @@ fun EditDeckScreen(
                     items(state.cards, key = { it.id }) { card ->
                         CardCell(
                             card = card,
-                            deckPath = deck.assetFolder,
+                            deck = deck,
                             hasImage = card.id in state.cardsWithImage,
-                            cacheBuster = state.imageVersion,
                             onTap = {
                                 viewModel.beginPickFor(card)
                                 imagePicker.launch("image/*")
@@ -172,8 +173,8 @@ fun EditDeckScreen(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            "Tap a card to pick an image from your gallery / photos / file manager. " +
-                                "Cards without a custom image render the text fallback (the card's name and arcana label) — that's harmless but plain.",
+                            "Tap a card to pick an image for it from your photos or files. " +
+                                "A card with no image shows its name instead.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp),
@@ -258,9 +259,8 @@ private fun DeckMetadataEditor(
 @Composable
 private fun CardCell(
     card: Card,
-    deckPath: String,
+    deck: DeckArt,
     hasImage: Boolean,
-    cacheBuster: Int,
     onTap: () -> Unit,
     onLongTap: () -> Unit,
 ) {
@@ -286,15 +286,20 @@ private fun CardCell(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (hasImage) {
+            val index = deckArtIndex()
+            val version = index.version
+            val uri = remember(deck.id, card.imageRef, version, hasImage) { index.cardUri(deck, card.imageRef) }
+            if (hasImage && uri != null) {
                 val context = LocalContext.current
                 AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data("file://$deckPath/${card.imageRef}")
-                        .memoryCacheKey("custom-${deckPath}-${card.imageRef}-$cacheBuster")
-                        .diskCachePolicy(CachePolicy.DISABLED)
-                        .crossfade(false)
-                        .build(),
+                    model = remember(uri, version, context) {
+                        ImageRequest.Builder(context)
+                            .data(uri)
+                            .memoryCacheKey("arcana-edit-${deck.id}-${card.id}-$version")
+                            .diskCachePolicy(CachePolicy.DISABLED)
+                            .crossfade(false)
+                            .build()
+                    },
                     contentDescription = card.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

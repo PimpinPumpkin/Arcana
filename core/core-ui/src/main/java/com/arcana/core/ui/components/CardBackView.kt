@@ -1,33 +1,52 @@
 package com.arcana.core.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.ui.theme.CardShapes
-import androidx.compose.foundation.Canvas
+import com.arcana.core.ui.util.deckArtIndex
 
 /**
- * A decorative card back. Pure-Compose so it works with no asset shipped.
+ * The back of a card. A deck that came with its own back image shows that; every other deck gets
+ * a back drawn in the theme's colors, which needs no file at all.
  */
 @Composable
 fun CardBackView(
     modifier: Modifier = Modifier,
+    deck: DeckArt? = null,
 ) {
+    val index = deckArtIndex()
+    val version = index.version
+    val uri = remember(deck?.id, version) { deck?.let(index::backUri) }
+    var broken by remember(uri) { mutableStateOf(false) }
     val accent = MaterialTheme.colorScheme.tertiary
     val deep = MaterialTheme.colorScheme.primary
     Box(
@@ -40,53 +59,58 @@ fun CardBackView(
                     listOf(deep, deep.copy(alpha = 0.7f), Color.Black.copy(alpha = 0.85f)),
                 ),
             )
-            .border(1.dp, accent.copy(alpha = 0.6f), CardShapes.tarotCard)
-            .padding(8.dp),
+            .border(1.dp, accent.copy(alpha = 0.6f), CardShapes.tarotCard),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            // Outer frame
-            drawRoundedFrame(stroke = Stroke(width = 2.dp.toPx()), color = accent.copy(alpha = 0.7f))
-            drawRoundedFrame(stroke = Stroke(width = 1.dp.toPx()), color = accent.copy(alpha = 0.3f), inset = 12.dp.toPx())
-
-            // Star burst in center
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val outerR = (size.minDimension / 4f)
-            val innerR = outerR * 0.4f
-            for (i in 0 until 8) {
-                rotate(degrees = i * 45f, pivot = Offset(cx, cy)) {
-                    drawCircle(
-                        color = accent.copy(alpha = 0.6f),
-                        radius = innerR / 4f,
-                        center = Offset(cx, cy - outerR),
-                    )
-                }
-            }
-            drawCircle(
-                color = accent.copy(alpha = 0.7f),
-                radius = innerR,
-                center = Offset(cx, cy),
-                style = Stroke(width = 1.5.dp.toPx()),
+        if (uri != null && !broken) {
+            val context = LocalContext.current
+            AsyncImage(
+                model = remember(uri, version, context) {
+                    ImageRequest.Builder(context)
+                        .data(uri)
+                        .crossfade(false)
+                        .memoryCacheKey("arcana-back-${deck?.id}-$version")
+                        .diskCachePolicy(CachePolicy.DISABLED)
+                        .build()
+                },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                onError = { broken = true },
+                modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                // Everything is sized from the card, so a small card gets a small frame.
+                val unit = size.minDimension
+                frame(inset = unit * 0.08f, width = unit * 0.02f, color = accent.copy(alpha = 0.7f))
+                frame(inset = unit * 0.16f, width = unit * 0.01f, color = accent.copy(alpha = 0.3f))
+
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val outerR = unit / 4f
+                val innerR = outerR * 0.4f
+                for (i in 0 until 8) {
+                    rotate(degrees = i * 45f, pivot = Offset(cx, cy)) {
+                        drawCircle(color = accent.copy(alpha = 0.6f), radius = innerR / 4f, center = Offset(cx, cy - outerR))
+                    }
+                }
+                drawCircle(
+                    color = accent.copy(alpha = 0.7f),
+                    radius = innerR,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = unit * 0.015f),
+                )
+            }
         }
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRoundedFrame(
-    stroke: Stroke,
-    color: Color,
-    inset: Float = 0f,
-) {
-    val left = inset
-    val top = inset
-    val w = size.width - inset * 2
-    val h = size.height - inset * 2
+private fun DrawScope.frame(inset: Float, width: Float, color: Color) {
     drawRoundRect(
         color = color,
-        topLeft = Offset(left, top),
-        size = androidx.compose.ui.geometry.Size(w, h),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx(), 10.dp.toPx()),
-        style = stroke,
+        topLeft = Offset(inset, inset),
+        size = Size(size.width - inset * 2, size.height - inset * 2),
+        cornerRadius = CornerRadius(size.minDimension * 0.08f),
+        style = Stroke(width = width.coerceAtLeast(1f)),
     )
 }

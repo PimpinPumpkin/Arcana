@@ -2,6 +2,7 @@ package com.arcana.core.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -27,11 +28,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -40,8 +42,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.arcana.core.domain.model.Card
 import com.arcana.core.domain.model.DeckArt
-import com.arcana.core.ui.util.DeckAssetResolver
-import com.arcana.core.ui.util.LocalDeckHasArt
+import com.arcana.core.ui.util.deckArtIndex
 
 private const val MIN_SCALE = 1f
 private const val MAX_SCALE = 5f
@@ -49,14 +50,13 @@ private const val DOUBLE_TAP_SCALE = 2.5f
 private const val DISMISS_THRESHOLD_DP = 160f
 
 /**
- * Fullscreen tarot-card art viewer with pinch-to-zoom, drag-to-pan, and
- * swipe-down to dismiss. Double-tap toggles between fit-to-screen and a
- * moderate zoom.
+ * A card's art, full screen. Pinch to zoom, drag to move around when zoomed, double tap to zoom in
+ * and back out, swipe down to close.
  *
- * Gesture routing (single pointerInput so handlers don't fight):
- *   - 2+ fingers: pinch zoom (and pan when zoomed)
- *   - 1 finger while zoomed: pan
- *   - 1 finger while not zoomed: swipe-down dismiss (downward only)
+ * One gesture handler does all of it so the gestures cannot fight:
+ *   - two or more fingers: zoom, and move when zoomed
+ *   - one finger while zoomed: move
+ *   - one finger while not zoomed: swipe down to close
  */
 @Composable
 fun ZoomableCardImage(
@@ -72,25 +72,32 @@ fun ZoomableCardImage(
             dismissOnClickOutside = false,
         ),
     ) {
-        val deckHasArt = LocalDeckHasArt.current(deck.id)
+        val index = deckArtIndex()
+        val uri = remember(deck.id, card.imageRef, index.version) { index.cardUri(deck, card.imageRef) }
         var scale by remember { mutableFloatStateOf(MIN_SCALE) }
         var offset by remember { mutableStateOf(Offset.Zero) }
         var dismissDrag by remember { mutableFloatStateOf(0f) }
+        var size by remember { mutableStateOf(IntSize.Zero) }
+
+        // The picture can be moved until its edge meets the edge of the screen, no further.
+        fun clamp(o: Offset, s: Float): Offset {
+            val maxX = size.width * (s - 1f) / 2f
+            val maxY = size.height * (s - 1f) / 2f
+            return Offset(o.x.coerceIn(-maxX, maxX), o.y.coerceIn(-maxY, maxY))
+        }
 
         val density = LocalDensity.current
-        val dismissThresholdPx = remember(density) {
-            with(density) { DISMISS_THRESHOLD_DP.dp.toPx() }
-        }
+        val dismissThresholdPx = remember(density) { with(density) { DISMISS_THRESHOLD_DP.dp.toPx() } }
         val dismissProgress = (dismissDrag / dismissThresholdPx).coerceIn(0f, 1f)
-        val backdropAlpha = 1f - dismissProgress * 0.6f
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = backdropAlpha)),
+                .background(Color.Black.copy(alpha = 1f - dismissProgress * 0.6f)),
         ) {
             val transformModifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged { size = it }
                 .pointerInput(card.id) {
                     detectTapGestures(
                         onDoubleTap = {
@@ -113,20 +120,13 @@ fun ZoomableCardImage(
                             val zoom = event.calculateZoom()
 
                             if (pointerCount >= 2) {
-                                // Pinch — zoom and (when zoomed) pan
                                 scale = (scale * zoom).coerceIn(MIN_SCALE, MAX_SCALE)
-                                if (scale > MIN_SCALE) {
-                                    offset += pan
-                                } else {
-                                    offset = Offset.Zero
-                                }
+                                offset = if (scale > MIN_SCALE) clamp(offset + pan, scale) else Offset.Zero
                                 event.changes.forEach { it.consume() }
                             } else if (scale > MIN_SCALE) {
-                                // Single finger while zoomed — pan
-                                offset += pan
+                                offset = clamp(offset + pan, scale)
                                 event.changes.forEach { it.consume() }
                             } else {
-                                // Single finger, not zoomed — swipe down to dismiss
                                 val newDrag = (dismissDrag + pan.y).coerceAtLeast(0f)
                                 if (newDrag != dismissDrag) {
                                     dismissDrag = newDrag
@@ -135,7 +135,6 @@ fun ZoomableCardImage(
                             }
                         } while (event.changes.any { it.pressed })
 
-                        // Gesture ended — commit dismiss or snap back
                         if (dismissDrag > dismissThresholdPx) {
                             onDismiss()
                         } else {
@@ -151,13 +150,13 @@ fun ZoomableCardImage(
                     alpha = 1f - dismissProgress * 0.7f,
                 )
 
-            if (deckHasArt) {
+            if (uri != null) {
                 val context = LocalContext.current
-                val request = remember(card.id, deck.id, context) {
+                val request = remember(uri, context) {
                     ImageRequest.Builder(context)
-                        .data(DeckAssetResolver.fileUri(deck, card))
+                        .data(uri)
                         .crossfade(false)
-                        .memoryCacheKey("arcana-${deck.id}-${card.id}-full")
+                        .memoryCacheKey("arcana-${deck.id}-${card.id}-full-${index.version}")
                         .diskCachePolicy(CachePolicy.DISABLED)
                         .build()
                 }
@@ -168,15 +167,8 @@ fun ZoomableCardImage(
                     modifier = transformModifier,
                 )
             } else {
-                Box(
-                    modifier = transformModifier,
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = card.name,
-                        color = Color.White,
-                        style = MaterialTheme.typography.headlineLarge,
-                    )
+                Box(modifier = transformModifier, contentAlignment = Alignment.Center) {
+                    Text(text = card.name, color = Color.White, style = MaterialTheme.typography.headlineLarge)
                 }
             }
 
@@ -188,11 +180,7 @@ fun ZoomableCardImage(
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.5f)),
             ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = Color.White,
-                )
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
         }
     }
