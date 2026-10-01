@@ -1,110 +1,93 @@
 # Arcana
 
-The most obvious vibe-coded esoteric app around. Whimsical and odd. A Material 3 Expressive tarot reference and divination companion for Android. Built with Jetpack Compose, multi-module clean architecture, and a pluggable AI interpreter.
+The most obvious vibe-coded esoteric app around. Whimsical and odd. A tarot reference and reading journal for Android, with an optional language model that writes readings on the phone.
 
-## Features
+## What it does
 
-- **Card library** — all 78 cards (22 Major Arcana + 56 Minor Arcana) with upright + reversed meanings, keywords, element, astrology, numerology. Searchable (by name, keyword, rank number, or roman numeral) and filterable by suit.
-- **Spread guides** — 8 spreads bundled: Daily Draw, Past/Present/Future, Situation/Action/Outcome, Mind/Body/Spirit, Horseshoe, Celtic Cross, Year Ahead, Relationship. Tapping a spread opens a guide showing the layout, what each numbered position means, and a practice tip for laying the cards out with a physical deck.
-- **Two reading modes**:
-  - **Pull digitally** — shuffle, draw, optional AI interpretation, save.
-  - **Log physical** — manually enter cards you drew with your real deck, set orientation per position, add notes. Saved alongside digital pulls in the journal with a kind badge.
-- **Pluggable AI interpreter** — three backends:
-  - **Rule-based** (offline, no AI) — composes a reading from canonical card meanings. Default. No network. Renders styled markdown output.
-  - **Claude API** (cloud) — streamed interpretation from Anthropic's Messages API. Requires your own API key (paste in Settings). Fully opt-in.
-  - **Local LLM** (placeholder) — surface ready for an on-device model (MLC-LLM or llama.cpp). Reports Unavailable until wired.
-- **Theming** — 6 hand-tuned palettes (Mystic Twilight, Midnight Ink, Forest Oracle, Moonlight, Golden Sun, Rider-Waite Classic) plus Material You dynamic colors on Android 12+.
-- **Bundled deck art** — Rider-Waite-Smith (1909), public-domain scans from Wikimedia Commons, ships with the APK (~41 MB). Deck-art system is data-driven — drop a folder of art and register a new `DeckArt` to add another deck.
-- **Journal** — saved readings with timestamps, kind badge (digital vs physical), question, notes, and the rendered spread layout.
+- **Card library.** All 78 cards with upright and reversed meanings, keywords, element, astrology and numerology. Search by name, keyword, number or roman numeral, and filter by suit.
+- **Spreads.** Eight are built in: Daily Draw, three three-card spreads, Horseshoe, Celtic Cross, Relationship and Year Ahead. Each has a guide to its positions, and there is an editor for spreads of your own. Cards are drawn as large as the screen allows, with each position named under its card.
+- **Readings.** Pull cards in the app, or log a reading you did with a real deck. Either one can be saved to the journal with its question and your notes.
+- **Interpretation, three ways.**
+  - The cards' own meanings, position by position. Built in, offline, and what the app does by default.
+  - A language model on the phone. One download of 0.7 to 1.3 GB. After that it needs no connection and nothing you ask leaves the phone.
+  - Claude, with your own Anthropic API key.
+- **Decks.** Rider-Waite-Smith (1909, public domain) is bundled. Import your own from a folder or ZIP of images, or set cards one at a time.
+- **Themes.** Six palettes, each in light and dark, or your wallpaper's colors.
+- **Backup.** Export readings and custom spreads to a file and bring them in on another phone.
 
-## Architecture
+Android 8.0 and later. The on-device model needs a 64-bit ARM phone; everything else runs anywhere.
 
-```
-app/                        — entry, navigation, theme + LocalDeckHasArt provisioning
-core/
-  core-common/              — DispatcherProvider, Result, Hilt module
-  core-domain/              — pure-Kotlin models, repository interfaces, use cases
-  core-data/                — JSON catalog loaders (cards, spreads), repository
-                              impls, DataStore-backed settings
-  core-database/            — Room entities & DAOs for the journal (v2)
-  core-ui/                  — theme, shared Compose components (TarotCardView,
-                              SpreadBoard, MarkdownText, CardBackView)
-feature/
-  feature-library/          — encyclopedia + card detail
-  feature-spreads/          — spread picker → overview/guide → reading flow
-  feature-journal/          — saved readings + log-physical entry
-  feature-settings/         — theme, deck, AI backend config
-service/
-  service-ai/               — TarotInterpreter interface + 3 implementations
-                              (rule-based, Claude API, local-LLM stub)
-```
+## Install
+
+Builds are on the [releases page](https://github.com/PimpinPumpkin/Arcana/releases).
+
+| Channel | What it is |
+| --- | --- |
+| Stable | The newest nightly, promoted once a week. |
+| Nightly | Built once a day from `main`, when `main` has changed. Marked prerelease. |
+| Canary | Rebuilt on every push to the `canary` branch. For testing. |
+
+All three are the same app signed with the same key, on one rising version line, so moving between them is an ordinary update.
+
+## The on-device model
+
+Three models are offered. Sizes are downloads. Times are for a three-card reading on a Pixel 4a 5G (2020, mid-range) with the model load included; newer phones are quicker.
+
+| Picker name | Model | Size | Three cards |
+| --- | --- | --- | --- |
+| Quick | LFM2.5 1.2B, Liquid AI, LFM Open License | 731 MB | 23 s |
+| Balanced | Gemma 3 1B, Google, Gemma Terms of Use | 806 MB | 33 s |
+| Thorough | Qwen3.5 2B, Alibaba, Apache 2.0 | 1.3 GB | 41 s |
+
+Any other GGUF chat model works too: Settings has a row for a file you already have.
+
+A reading is run as a short conversation, one card per turn. The app writes the headings and decides which card comes next; the model writes two or three sentences under each, then a summary. Each card's keywords are given to the model from the app's own card data, and a grammar keeps every reply to whole sentences. Small models drift when asked to hold a format across a whole reading, and this is what stopped it.
+
+The model runs through [llama.cpp](https://github.com/ggml-org/llama.cpp), built from source as a submodule. `service/service-ai/tools/reading-cli` runs the same code on a desktop, which is how a new model gets tried before it goes in the picker.
 
 ## Building
-
-### Mac / Linux
 
 ```bash
 git clone --recurse-submodules https://github.com/PimpinPumpkin/Arcana.git
 cd Arcana
-echo "sdk.dir=$ANDROID_HOME" > local.properties   # or hard-code the path
 ./gradlew assembleRelease
 ```
 
-If you cloned without `--recurse-submodules`, run `git submodule update --init --recursive` from the repo root — `service/service-ai` vendors llama.cpp as a submodule.
+Needs JDK 17 and the Android SDK with platform 37, NDK 28.2.13676358 and CMake 3.22.1. If you cloned without `--recurse-submodules`, run `git submodule update --init --recursive`.
 
-APK lands at `app/build/outputs/apk/release/app-release.apk` (~44 MB after R8 + resource shrinking).
-
-The `release` buildType is signed with the debug keystore for personal-install convenience — `adb install` works on any device, no Play Store keystore needed yet. Swap in a real `signingConfig` in `app/build.gradle.kts` when shipping. Plain `./gradlew assembleDebug` still works if you ever want a non-minified build for profiling — but don't use it for everyday use, scrolling and navigation lag noticeably without R8 minification.
-
-### Windows
-
-Plain `./gradlew assembleRelease` works on most setups. On Windows ARM with Defender enabled, the transform cache hits a file-handle race that causes spurious `Could not move temporary workspace` failures. If you see that, use the bundled recovery wrapper:
+The APK lands at `app/build/outputs/apk/release/app-release.apk`, about 34 MB. It is signed with the debug key unless `ARCANA_KEYSTORE_PATH`, `ARCANA_KEYSTORE_PASSWORD` and `ARCANA_KEY_ALIAS` are set. Build the release variant even for everyday use: debug builds are not minified, and scroll badly.
 
 ```bash
-bash build-with-recovery.sh           # defaults to assembleRelease
-bash build-with-recovery.sh assembleDebug   # if you want debug instead
+./gradlew testDebugUnitTest :core:core-domain:test        # JVM tests
+./gradlew :core:core-database:connectedDebugAndroidTest   # database migrations, on an emulator
 ```
 
-It retries up to 15 times and rescues stuck temp workspaces with PowerShell between attempts. Keep it as a fallback only — it's strictly a workaround for the Defender issue.
+## Layout
 
-### Prerequisites
-
-- JDK 17 (Eclipse Temurin recommended on Windows ARM — Microsoft OpenJDK ARM has a `Files.move` NIO bug)
-- Android SDK 35 (cmdline-tools, platform-tools, build-tools 35.0.0, platforms;android-35)
-- Android NDK 27 + CMake 3.22.1 (for the on-device LLM native build in `service/service-ai`)
-- Gradle 8.11.1 (the wrapper bootstraps automatically)
-
-Android Studio Ladybug or newer handles all of this for you.
+```
+app/                    entry point, navigation, What's new
+baselineprofile/        records the startup profile the release build carries
+core/
+  core-common/          dispatchers and shared plumbing
+  core-domain/          models, repository interfaces, use cases. Plain Kotlin.
+  core-data/            card and spread JSON, settings, custom decks, backup
+  core-database/        Room: the journal and custom spreads, with migrations
+  core-ui/              theme and shared components, spread layout math
+feature/
+  feature-library/      card grid and card pages
+  feature-spreads/      spread list, guide, editor, and the reading itself
+  feature-journal/      saved readings, logging a physical reading
+  feature-settings/     themes, decks, models, backup
+service/
+  service-ai/           the three interpreters, and the on-device model
+```
 
 ## Card art
 
-Rider-Waite-Smith is bundled. The 78 JPEGs live at `app/src/main/assets/decks/rider-waite/` and were downloaded from Wikimedia Commons via `scripts/fetch-rider-waite.sh` — re-runnable if you want to refresh them.
-
-To add a new deck:
-
-1. Create `app/src/main/assets/decks/<deck-id>/` and drop image files in. Naming must match the `imageRef` field in `core/core-data/src/main/assets/cards.json` — for example `major_00_fool.jpg`, `wands_01_ace.jpg`, `wands_page.jpg`. Either `.jpg` or `.png` works.
-2. Register a `DeckArt` entry in `core/core-data/src/main/java/com/arcana/core/data/repository/DeckArtCatalog.kt`.
-3. The deck appears in Settings → Card deck. Switching is live; no rebuild needed beyond the asset addition.
-
-The deck-art system is plain assets + a data catalog — there's no codegen, no bake step. The Compose-rendered card back works without any back asset.
-
-## AI configuration
-
-By default Arcana uses the **rule-based** interpreter — fully offline, no AI, no network. It composes a markdown-formatted reading from canonical card meanings.
-
-To enable Claude:
-
-1. Get an API key from the Anthropic Console.
-2. Settings → AI Interpreter → Backend → "Claude API".
-3. Paste your key into the API key field and tap Save.
-4. Generate a reading — interpretation streams back live.
-
-To wire a local LLM, add an Android AAR from MLC-LLM (or a llama.cpp JNI bridge) to `service/service-ai`, implement model download on first use, and replace the body of `LocalLlmInterpreter.interpret`. The `TarotInterpreter` interface contract stays the same.
-
-The app declares the `INTERNET` permission, but only uses it when you explicitly enable the Claude backend AND provide a key. The default rule-based path does no networking.
+The 78 Rider-Waite-Smith scans are in `app/src/main/assets/decks/rider-waite/` as WebP. They came from Wikimedia Commons; `scripts/fetch-rider-waite.sh` fetches and encodes them again.
 
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE).
 
-Card meanings text is original to this project. Rider-Waite-Smith imagery is public domain (Pamela Colman Smith, 1909).
+The card meanings are original to this project. The Rider-Waite-Smith images are in the public domain (Pamela Colman Smith, 1909). The models are downloaded from their publishers under the terms named above and are not part of this repository.
