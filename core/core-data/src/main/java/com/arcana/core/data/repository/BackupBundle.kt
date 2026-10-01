@@ -3,14 +3,12 @@ package com.arcana.core.data.repository
 import kotlinx.serialization.Serializable
 
 /**
- * On-disk shape of an Arcana backup bundle. Holds custom spreads + saved
- * readings — the user-generated data that's worth surviving an uninstall
- * or moving between devices.
+ * On-disk shape of an Arcana backup bundle. Holds custom spreads and saved
+ * readings: what the user made, and what is worth carrying to another phone.
  *
  * Bundled spreads aren't included (they ship with the app), and bundled
- * deck art isn't included (the same APK has it). Custom DECK files aren't
- * yet covered — those are images that bloat a JSON badly; deferred until
- * we decide whether to do a separate ZIP-format export for them.
+ * deck art isn't included (the same APK has it). Imported decks are not in it
+ * either: they are images, and each has its own ZIP export under Manage decks.
  *
  * schemaVersion will get bumped if the shape changes; importers should
  * refuse a higher schemaVersion than they understand.

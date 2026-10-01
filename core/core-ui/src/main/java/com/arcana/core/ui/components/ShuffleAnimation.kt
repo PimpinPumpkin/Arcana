@@ -22,7 +22,7 @@ import kotlin.math.sin
 
 /**
  * Three card-back silhouettes orbiting / rotating, evoking a shuffle.
- * Self-contained — no card data required.
+ * Self-contained: no card data required.
  */
 @Composable
 fun ShuffleAnimation(

@@ -401,9 +401,8 @@ private fun PositionEditorDialog(
                 )
             }
         },
-        // Promote Save to a filled Button so it carries enough visual
-        // weight to stand out in the dialog's button row — TextButton
-        // alone was easy to overlook against the dialog background.
+        // Save is a filled button: as a text button it was easy to overlook in
+        // the dialog's button row.
         confirmButton = {
             Button(onClick = onSave, enabled = draft.label.isNotBlank()) { Text("Save") }
         },

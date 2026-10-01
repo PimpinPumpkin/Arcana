@@ -17,13 +17,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Renders a tightly-scoped subset of markdown — what the rule-based interpreter
- * and most Claude responses produce — directly into Compose composables.
+ * Renders the small subset of Markdown a reading uses, whoever wrote it, straight into
+ * Compose.
  *
  * Supported:
- *   - `### Heading` (h3) — bigger weight
- *   - `## Heading` / `# Heading` — title-sized
- *   - `---` on its own line — horizontal divider
+ *   - `### Heading` (h3): bigger weight
+ *   - `## Heading` / `# Heading`: title-sized
+ *   - `---` on its own line: horizontal divider
  *   - `**bold**` and `_italic_` inline
  *   - blank line = paragraph break
  *   - bare lines = single paragraph (newlines collapsed within)

@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 data class SpreadPickerUiState(
     val spreads: List<Spread> = emptyList(),
-    /** Subset of [spreads] IDs that are user-authored — these get edit/delete affordances. */
+    /** The ids in [spreads] that the user made. Those can be edited and deleted. */
     val customIds: Set<String> = emptySet(),
     val isLoading: Boolean = true,
 )
@@ -43,8 +43,8 @@ class SpreadPickerViewModel @Inject constructor(
 
     /**
      * Persist the user's reordering of the picker. Caller is responsible for
-     * passing the *full* list (every visible spread's ID, in the new order)
-     * — we don't merge partial reorders here.
+     * passing the *full* list (every visible spread's ID, in the new order):
+     * partial reorders are not merged here.
      */
     fun setSpreadOrder(orderedIds: List<String>) = viewModelScope.launch {
         settingsRepository.setSpreadOrder(orderedIds)

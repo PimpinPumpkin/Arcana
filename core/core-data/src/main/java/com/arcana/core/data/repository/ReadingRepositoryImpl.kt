@@ -23,8 +23,8 @@ import javax.inject.Singleton
 /**
  * On-disk shape of a [Position] used only for the reading-snapshot column.
  * Mirrors domain [Position] but lives here so the domain module doesn't have
- * to take a serialization dependency. Schema is intentionally flat — column
- * stores `[{i,l,m,x,y,r}, ...]` to keep the JSON small.
+ * to take a serialization dependency. The shape is flat on purpose: the column
+ * holds `[{i,l,m,x,y,r}, ...]` to keep the JSON small.
  */
 @Serializable
 private data class PositionSnapshot(

@@ -74,7 +74,7 @@ fun BackupScreen(
         ) {
             item {
                 Text(
-                    "Save your custom spreads + saved journal readings to a JSON file you can keep around or share. Bundled spreads aren't included (they ship with the app); custom deck images aren't included yet (they'd bloat the file — separate export TBD).",
+                    "Save your custom spreads and journal readings to one file you can keep or move to another phone. Imported decks are not in it: each has its own ZIP export under Manage decks.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -82,7 +82,7 @@ fun BackupScreen(
             item {
                 ActionCard(
                     title = "Export to a file",
-                    description = "Saves a single .json containing every custom spread and every saved reading.",
+                    description = "One .json file with every custom spread and every saved reading.",
                     icon = Icons.Default.FileDownload,
                     busy = state.isExporting,
                     onClick = { exportLauncher.launch(viewModel.suggestedFileName()) },
@@ -91,7 +91,7 @@ fun BackupScreen(
             item {
                 ActionCard(
                     title = "Import from a file",
-                    description = "Reads a previously exported .json and merges it into the journal. Spreads / readings with matching IDs are replaced.",
+                    description = "Reads a file exported from here and merges it into the journal. A spread or reading that is already here is replaced by the one in the file.",
                     icon = Icons.Default.FileUpload,
                     busy = state.isImporting,
                     onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
@@ -105,7 +105,7 @@ fun BackupScreen(
                 title = { Text("Backup saved") },
                 text = {
                     Text(
-                        "Saved to ${uri.lastPathSegment ?: uri}. Keep it somewhere durable — losing it means losing those custom spreads and readings.",
+                        "Saved to ${uri.lastPathSegment ?: uri}. Keep a copy somewhere other than this phone.",
                     )
                 },
                 confirmButton = {

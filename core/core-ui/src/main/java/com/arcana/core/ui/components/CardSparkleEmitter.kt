@@ -40,7 +40,7 @@ private data class Particle(
 /**
  * Emits a short burst of dust/star particles from the center whenever
  * [triggerKey] changes. Designed to be overlaid on a tappable card so each tap
- * produces a quick sparkle. The initial composition does not emit — only later
+ * produces a quick sparkle. The initial composition does not emit, only later
  * key changes do, so a freshly composed card stays quiet until tapped.
  */
 @Composable
@@ -65,10 +65,10 @@ fun CardSparkleEmitter(
         val center = Offset(size.width / 2f, size.height / 2f)
         val maxReach = minOf(size.width, size.height) / 2f
         particles.forEach { p ->
-            val travelled = p.travelFraction * maxReach * cur
+            val traveled = p.travelFraction * maxReach * cur
             val pos = Offset(
-                center.x + cos(p.angle) * travelled,
-                center.y + sin(p.angle) * travelled,
+                center.x + cos(p.angle) * traveled,
+                center.y + sin(p.angle) * traveled,
             )
             val alpha = (1f - cur).coerceIn(0f, 1f)
             val r = p.radius * (1f - cur * 0.4f)

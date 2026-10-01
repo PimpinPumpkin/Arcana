@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcana.core.domain.model.Card
+import com.arcana.core.ui.components.Tag
 import com.arcana.core.ui.components.TarotCardView
 import com.arcana.core.ui.components.ZoomableCardImage
 import com.arcana.core.ui.theme.ArcanaColors
@@ -127,23 +127,19 @@ fun CardDetailScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FactsRow(card: Card) {
-    Row(
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        card.element?.let {
-            AssistChip(onClick = {}, label = { Text(it.displayName) })
-        }
-        card.astrology?.let {
-            AssistChip(onClick = {}, label = { Text(it) })
-        }
-        card.numerology?.let {
-            AssistChip(onClick = {}, label = { Text(it) })
-        }
+        card.element?.let { Tag(it.displayName) }
+        card.astrology?.let { Tag(it) }
+        card.numerology?.let { Tag(it) }
     }
 }
 
@@ -168,9 +164,8 @@ private fun KeywordRow(keywords: List<String>) {
             .fillMaxWidth()
             .padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        keywords.forEach { keyword ->
-            AssistChip(onClick = {}, label = { Text(keyword, style = MaterialTheme.typography.labelSmall) })
-        }
+        keywords.forEach { Tag(it) }
     }
 }

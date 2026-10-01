@@ -47,7 +47,7 @@ data class Card(
         buildString {
             append(name.lowercase())
             append(' ')
-            // Synthetic numeric and roman forms of the name — so "5 of cups" finds
+            // Synthetic numeric and roman forms of the name, so "5 of cups" finds
             // Five of Cups and "xvi tower" finds The Tower.
             when (val a = arcana) {
                 is Arcana.Major -> {

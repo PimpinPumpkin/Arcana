@@ -133,7 +133,7 @@ class LogPhysicalReadingViewModel @Inject constructor(
 
     /**
      * Cards available to assign to the currently-open position. Excludes any card
-     * already assigned to a *different* position — you can't pull the same card
+     * already assigned to a *different* position: you can't pull the same card
      * twice from a real deck. The card currently in the open position (if any) is
      * still allowed, so re-opening the picker doesn't hide your existing pick.
      */

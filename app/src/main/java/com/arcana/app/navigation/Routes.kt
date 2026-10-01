@@ -33,8 +33,8 @@ object Routes {
     const val ARG_READING_ID = "readingId"
 
     /**
-     * Custom-spread editor — two routes so creating and editing have
-     * distinct nav destinations (spreadId is required for edit).
+     * The custom spread editor. Two routes, so creating and editing are
+     * separate destinations (editing needs a spreadId).
      */
     const val CUSTOM_SPREAD_NEW = "customSpreadNew"
     const val CUSTOM_SPREAD_EDIT = "customSpreadEdit"

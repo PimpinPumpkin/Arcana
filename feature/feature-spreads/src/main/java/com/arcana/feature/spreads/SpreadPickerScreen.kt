@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcana.core.domain.model.Spread
+import com.arcana.core.ui.components.Tag
+import com.arcana.core.ui.util.cardCount
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -221,7 +222,7 @@ fun SpreadPickerScreen(
 }
 
 /**
- * Static info about a spread — useful when the user wants to know what a
+ * Static info about a spread, for when the user wants to know what a
  * spread *is* without picking it. Intentionally separate from the AI
  * interpretation surface: that's about the cards drawn; this is about the
  * spread template itself. For bundled spreads this is the curated
@@ -250,11 +251,7 @@ private fun SpreadInfoDialog(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = stringResource(
-                        R.string.spreads_info_meta,
-                        spread.cardCount,
-                        spread.difficulty.displayName,
-                    ),
+                    text = "${cardCount(spread.cardCount)} · ${spread.difficulty.displayName}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
@@ -344,9 +341,8 @@ private fun SpreadCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Visible drag affordance — long-press anywhere on the card
-                // grabs it for reorder, but the handle icon makes that
-                // discoverable rather than hidden behind a gesture.
+                // Long-press anywhere on the card picks it up for reordering. The
+                // handle is there so that is something you can see, not a hidden gesture.
                 Icon(
                     imageVector = Icons.Default.DragHandle,
                     contentDescription = stringResource(R.string.spreads_drag_handle),
@@ -387,32 +383,9 @@ private fun SpreadCard(
                 modifier = Modifier.padding(top = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AssistChip(
-                    onClick = onClick,
-                    label = {
-                        Text(
-                            stringResource(R.string.spreads_card_count, spread.cardCount),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    },
-                )
-                AssistChip(
-                    onClick = onClick,
-                    label = {
-                        Text(
-                            spread.difficulty.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    },
-                )
-                if (isCustom) {
-                    AssistChip(
-                        onClick = onClick,
-                        label = {
-                            Text("Custom", style = MaterialTheme.typography.labelSmall)
-                        },
-                    )
-                }
+                Tag(cardCount(spread.cardCount))
+                Tag(spread.difficulty.displayName)
+                if (isCustom) Tag("Custom")
             }
         }
     }

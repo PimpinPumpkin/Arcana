@@ -51,9 +51,8 @@ class SpreadRepositoryImpl @Inject constructor(
      * The `flow { ensureLoaded(); emitAll(...) }` wrapper is load-bearing:
      * `bundledCache` starts as `emptyList()` and is only populated inside
      * `ensureLoaded()`. Without this priming step the Flow would emit an
-     * empty bundled set on first collection — which v0.4.0 shipped with,
-     * causing the picker to show only the "Create custom" entry plus any
-     * user-authored spreads.
+     * empty bundled set on first collection, which 0.4.0 shipped with: the
+     * picker showed only "Create a custom spread" and the user's own spreads.
      */
     override fun observeAllSpreads(): Flow<List<Spread>> = flow {
         ensureLoaded()
