@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and earlier. The journal (the whole database folder, since recent writes live in
+  the files beside arcana.db) goes into every backup. Settings and imported decks only move in a
+  direct phone-to-phone transfer: settings can hold an API key, which should not sit in a cloud
+  backup, and decks are too large for one. Model files are never backed up; they can be
+  downloaded again.
+-->
 <full-backup-content>
-    <include domain="database" path="arcana.db" />
-    <include domain="sharedpref" path="arcana_settings.xml" />
+    <include domain="database" path="." />
+    <include domain="file" path="datastore/" requireFlags="deviceToDeviceTransfer" />
+    <include domain="file" path="decks/" requireFlags="deviceToDeviceTransfer" />
 </full-backup-content>

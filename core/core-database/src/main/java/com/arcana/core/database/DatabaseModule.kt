@@ -21,7 +21,12 @@ object DatabaseModule {
             context,
             ArcanaDatabase::class.java,
             "arcana.db",
-        ).fallbackToDestructiveMigration().build()
+        )
+            .addMigrations(*Migrations.ALL)
+            // Version 1 was never in a release. Anything later is migrated, never dropped: a
+            // version with no migration fails loudly instead of quietly emptying the journal.
+            .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
+            .build()
 
     @Provides
     fun provideReadingDao(database: ArcanaDatabase): ReadingDao = database.readingDao()

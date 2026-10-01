@@ -17,9 +17,8 @@ data class ReadingEntity(
     val deckArtId: String,
     val kind: String = "DIGITAL",
     /**
-     * JSON-serialized snapshot of the spread's positions at save time.
-     * Null for readings written before v0.5.0 (db v4) — those still resolve
-     * via SpreadRepository as a best-effort fallback.
+     * The spread's positions as they were when the reading was saved, as JSON. Null for readings
+     * saved before 0.5.0 (database version 4), which look their spread up by id instead.
      */
     val spreadPositionsJson: String? = null,
 )

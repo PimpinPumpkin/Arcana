@@ -3,9 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      INTERNET is optional. The default backend is fully offline (rule-based). The Claude
-      API backend is only used if the user explicitly enables it AND pastes an API key in
-      Settings. The app will never silently make a network call.
+      The network is used for two things, both of which the user asks for: downloading a
+      reading model, and readings from Claude with their own API key. Nothing else connects.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 

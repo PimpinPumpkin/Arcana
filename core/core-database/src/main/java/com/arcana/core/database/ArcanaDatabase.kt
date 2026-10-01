@@ -17,7 +17,7 @@ import com.arcana.core.database.entity.ReadingEntity
         CustomSpreadPositionEntity::class,
     ],
     version = 4,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class ArcanaDatabase : RoomDatabase() {
     abstract fun readingDao(): ReadingDao
