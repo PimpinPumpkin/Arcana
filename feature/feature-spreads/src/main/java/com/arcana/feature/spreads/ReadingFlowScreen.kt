@@ -1,17 +1,26 @@
 package com.arcana.feature.spreads
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,58 +28,62 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.arcana.core.ui.components.CardSparkleEmitter
 import com.arcana.core.ui.components.MarkdownText
 import com.arcana.core.ui.components.ShuffleAnimation
 import com.arcana.core.ui.components.SpreadBoard
+import com.arcana.core.ui.components.WritingIndicator
+import com.arcana.core.ui.util.formatBytes
 import com.arcana.service.ai.InterpretationTone
-import com.arcana.service.ai.local.ModelInstaller
-import com.arcana.service.ai.local.ModelManifest
-import kotlinx.coroutines.launch
+import com.arcana.service.ai.local.ModelSpec
+import com.arcana.service.ai.local.ModelStore
+import kotlinx.coroutines.flow.first
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,87 +94,62 @@ fun ReadingFlowScreen(
     viewModel: ReadingFlowViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val installState by viewModel.installState.collectAsStateWithLifecycle()
+    val modelStates by viewModel.modelStates.collectAsStateWithLifecycle()
     val spread = state.spread
-    val snackbarHostState = remember { SnackbarHostState() }
-    val isSaved = state.savedReadingId != null
+    val snackbar = remember { SnackbarHostState() }
 
-    val savedMessage = stringResource(R.string.spreads_saved_message)
-    val viewLabel = stringResource(R.string.spreads_saved_view)
     LaunchedEffect(state.savedReadingId) {
         val id = state.savedReadingId ?: return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(
-            message = savedMessage,
-            actionLabel = viewLabel,
-            withDismissAction = true,
-        )
+        val result = snackbar.showSnackbar("Reading saved", actionLabel = "View", withDismissAction = true)
         if (result == SnackbarResult.ActionPerformed) onSaved(id)
     }
 
-    // When the install transitions Downloading → Installed (i.e. the user's
-    // first-tap install just finished while they were on this screen), pop a
-    // snackbar so they know they can tap Interpret again to use the offline
-    // model. Track previous state in a remember so we only fire on the actual
-    // transition, not every recomposition while in Installed.
-    var previousInstallState by remember {
-        mutableStateOf<ModelInstaller.State>(installState)
-    }
-    val readyMessage = stringResource(R.string.spreads_install_ready)
-    LaunchedEffect(installState) {
-        val justFinished = previousInstallState is ModelInstaller.State.Downloading &&
-            installState is ModelInstaller.State.Installed
-        if (justFinished) {
-            snackbarHostState.showSnackbar(readyMessage, withDismissAction = true)
+    // Tell them when a model they started downloading from here is ready to use.
+    var wasDownloading by remember { mutableStateOf(false) }
+    val downloading = modelStates.values.any { it is ModelStore.State.Downloading || it is ModelStore.State.Verifying }
+    LaunchedEffect(downloading) {
+        if (wasDownloading && !downloading && modelStates.values.any { it is ModelStore.State.Installed }) {
+            snackbar.showSnackbar("The reading model is ready. Tap Interpret again to use it.", withDismissAction = true)
         }
-        previousInstallState = installState
+        wasDownloading = downloading
+    }
+
+    // A reading can take minutes on a slow phone, and a sleeping phone stops writing it.
+    val view = LocalView.current
+    DisposableEffect(state.isInterpreting) {
+        view.keepScreenOn = state.isInterpreting
+        onDispose { view.keepScreenOn = false }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(spread?.name ?: stringResource(R.string.spreads_title)) },
+                title = { Text(spread?.name ?: "Reading") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.spreads_back))
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        if (state.spreadNotFound) {
-            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "This spread no longer exists.\nIt may have been deleted from Settings.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            if (state.stage == ReadingStage.READING && spread != null) {
+                ReadingActions(
+                    state = state,
+                    onSave = viewModel::saveCurrentReading,
+                    onInterpret = viewModel::onInterpretTapped,
+                    onAgain = viewModel::requestInterpretation,
+                    onStop = viewModel::stopInterpretation,
                 )
             }
-            return@Scaffold
-        }
-        if (spread == null) {
-            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Loading…")
-            }
-            return@Scaffold
-        }
-
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
-        ) {
-            InstallBanner(
-                state = installState,
-                onCancel = viewModel::cancelLocalInstall,
-                onRetry = viewModel::retryLocalInstall,
-            )
-            AnimatedContent(
+        },
+    ) { padding ->
+        when {
+            state.spreadNotFound -> Centered(padding, "This spread no longer exists.")
+            spread == null -> Centered(padding, "")
+            else -> AnimatedContent(
                 targetState = state.stage,
                 label = "reading-stage",
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                modifier = Modifier.padding(padding).fillMaxSize(),
             ) { stage ->
                 when (stage) {
                     ReadingStage.QUESTION -> QuestionStage(
@@ -172,170 +160,94 @@ fun ReadingFlowScreen(
                         onContinue = viewModel::startShuffle,
                     )
                     ReadingStage.SHUFFLING -> ShufflingStage()
-                    ReadingStage.REVEAL -> RevealStage(
+                    ReadingStage.READING -> ReadingPage(
                         state = state,
-                        isSaved = isSaved,
-                        onCardClick = onCardClick,
-                        onInterpret = viewModel::onInterpretTapped,
-                        onSave = {
-                            viewModel.saveCurrentReading()
-                        },
-                    )
-                    ReadingStage.INTERPRETATION -> InterpretationStage(
-                        state = state,
-                        isSaved = isSaved,
+                        downloads = viewModel.installable.mapNotNull { spec -> modelStates[spec.id]?.let { spec to it } },
                         onCardClick = onCardClick,
                         onRetry = viewModel::requestInterpretation,
-                        onSave = {
-                            viewModel.saveCurrentReading()
-                        },
+                        onInstall = viewModel::install,
+                        onPause = viewModel::pauseInstall,
                     )
                 }
             }
         }
 
-        if (state.showFirstTapPrompt) {
-            FirstTapInstallDialog(
-                options = ModelManifest.ALL,
-                onInstall = viewModel::onFirstTapInstall,
-                onNotNow = viewModel::onFirstTapNotNow,
-                onDismiss = viewModel::onFirstTapDismissed,
+        if (state.offerInstall) {
+            val ask = notificationAsk()
+            InstallOfferDialog(
+                options = viewModel.installable,
+                onInstall = {
+                    ask()
+                    viewModel.onInstallChosen(it)
+                },
+                onNotNow = viewModel::onInstallDeclined,
+                onDismiss = viewModel::onInstallDismissed,
             )
         }
     }
 }
 
+/** Asks for the notification permission a download's progress needs, where Android has one. */
 @Composable
-private fun FirstTapInstallDialog(
-    options: List<ModelManifest>,
-    onInstall: (ModelManifest) -> Unit,
+private fun notificationAsk(): () -> Unit {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    return {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+}
+
+@Composable
+private fun Centered(padding: androidx.compose.foundation.layout.PaddingValues, text: String) {
+    Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun InstallOfferDialog(
+    options: List<ModelSpec>,
+    onInstall: (ModelSpec) -> Unit,
     onNotNow: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.spreads_first_install_title)) },
+        title = { Text("Have readings written for you?") },
         text = {
             Column {
-                Text(stringResource(R.string.spreads_first_install_body))
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("A small language model can write the reading on this phone. It is a one-time download, works with no connection after that, and nothing you ask ever leaves the phone. Times are for three cards on a mid-range phone from 2020.")
+                Spacer(Modifier.height(12.dp))
                 options.forEach { model ->
-                    Button(
+                    Card(
                         onClick = { onInstall(model) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "${model.displayName} · ${formatBytes(model.expectedBytes)}",
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                text = model.description,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                            )
+                        Column(Modifier.padding(12.dp)) {
+                            Text("${model.title} · ${formatBytes(model.bytes)}", style = MaterialTheme.typography.titleSmall)
+                            Text(model.summary, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
+                Text(
+                    "You can change or remove it in Settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         },
         confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onNotNow) {
-                Text(stringResource(R.string.spreads_first_install_no))
-            }
-        },
+        dismissButton = { TextButton(onClick = onNotNow) { Text("Not now") } },
     )
 }
 
-/**
- * Strip-style banner shown above the reading stages while the offline-AI
- * model is downloading or after a download has just failed. Hidden when the
- * installer is in [ModelInstaller.State.NotInstalled] or [ModelInstaller.State.Installed]
- * — the success-transition snackbar handles "ready to use" feedback.
- */
-@Composable
-private fun InstallBanner(
-    state: ModelInstaller.State,
-    onCancel: () -> Unit,
-    onRetry: () -> Unit,
-) {
-    AnimatedVisibility(
-        visible = state is ModelInstaller.State.Downloading ||
-            state is ModelInstaller.State.Failed,
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (state is ModelInstaller.State.Failed) {
-                    MaterialTheme.colorScheme.errorContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                },
-            ),
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                when (state) {
-                    is ModelInstaller.State.Downloading -> {
-                        val pct = (state.progress * 100).toInt().coerceIn(0, 100)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = stringResource(
-                                    R.string.spreads_install_progress,
-                                    pct,
-                                    formatBytes(state.bytesDone),
-                                    formatBytes(state.totalBytes),
-                                ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = onCancel) {
-                                Text(stringResource(R.string.spreads_install_cancel))
-                            }
-                        }
-                        LinearProgressIndicator(
-                            progress = { state.progress.coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 6.dp),
-                        )
-                    }
-                    is ModelInstaller.State.Failed -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = stringResource(R.string.spreads_install_failed, state.message),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = onRetry) {
-                                Text(stringResource(R.string.spreads_install_retry))
-                            }
-                        }
-                    }
-                    else -> Unit // not visible
-                }
-            }
-        }
-    }
-}
-
-private fun formatBytes(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val units = arrayOf("KB", "MB", "GB")
-    var value = bytes.toDouble() / 1024.0
-    var unitIdx = 0
-    while (value >= 1024.0 && unitIdx < units.size - 1) {
-        value /= 1024.0
-        unitIdx++
-    }
-    return "%.0f %s".format(value, units[unitIdx])
-}
-
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuestionStage(
     state: ReadingFlowUiState,
@@ -355,49 +267,31 @@ private fun QuestionStage(
         OutlinedTextField(
             value = state.question,
             onValueChange = onQuestionChange,
-            label = { Text(stringResource(R.string.spreads_question_label)) },
-            placeholder = { Text(stringResource(R.string.spreads_question_hint)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp),
+            label = { Text("Your question (optional)") },
+            placeholder = { Text("What weighs on your mind?") },
+            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
             minLines = 2,
         )
-
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(stringResource(R.string.spreads_allow_reversed), modifier = Modifier.weight(1f))
+            Text("Allow reversed cards", modifier = Modifier.weight(1f))
             Switch(checked = state.allowReversed, onCheckedChange = onToggleReversed)
         }
-
-        Text(
-            stringResource(R.string.spreads_tone),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Text("Tone of the reading", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+        // Wraps onto a second line on a narrow phone instead of running off the edge.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             InterpretationTone.entries.forEach { tone ->
                 FilterChip(
                     selected = state.tone == tone,
                     onClick = { onToneChange(tone) },
-                    label = { Text(tone.displayName, style = MaterialTheme.typography.labelSmall) },
+                    label = { Text(tone.displayName) },
                 )
             }
         }
-
-        Button(
-            onClick = onContinue,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 32.dp),
-        ) {
-            Text(stringResource(R.string.spreads_continue))
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().padding(top = 32.dp)) {
+            Text("Shuffle the deck")
         }
     }
 }
@@ -405,15 +299,13 @@ private fun QuestionStage(
 @Composable
 private fun ShufflingStage() {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         ShuffleAnimation()
         Text(
-            stringResource(R.string.spreads_shuffling),
+            "Shuffling",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 24.dp),
@@ -421,257 +313,180 @@ private fun ShufflingStage() {
     }
 }
 
+/**
+ * The cards, and under them the reading once one is asked for. It is one page that scrolls, so
+ * the cards can be as large as the screen is wide and the text as long as it needs to be; the
+ * buttons live in the bar below and are always in reach.
+ */
 @Composable
-private fun RevealStage(
+private fun ReadingPage(
     state: ReadingFlowUiState,
-    isSaved: Boolean,
+    downloads: List<Pair<ModelSpec, ModelStore.State>>,
     onCardClick: (String) -> Unit,
-    onInterpret: () -> Unit,
-    onSave: () -> Unit,
+    onRetry: () -> Unit,
+    onInstall: (ModelSpec) -> Unit,
+    onPause: (ModelSpec) -> Unit,
 ) {
     val spread = state.spread ?: return
     val deck = state.deck ?: return
-    Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
-            SpreadBoard(
-                spread = spread,
-                deck = deck,
-                drawnCards = state.drawn,
-                onCardClick = { card, _ -> onCardClick(card.id) },
-                showLabels = true,
-                cardSizeFraction = 0.24f,
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = onSave,
-                enabled = !isSaved,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(stringResource(if (isSaved) R.string.spreads_save_done else R.string.spreads_save))
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    val hasReading = state.isInterpreting || state.interpretation.isNotBlank() || state.error != null
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // A download in progress stays in sight above the page, however far the page is scrolled.
+        downloads.forEach { (spec, s) -> DownloadBanner(spec, s, onRetry = { onInstall(spec) }, onPause = { onPause(spec) }) }
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val viewport = maxHeight
+            val viewportPx = with(density) { viewport.toPx() }
+            var boardHeight by remember { mutableIntStateOf(0) }
+            // With no reading yet the cards sit in the middle of the screen; they move up to make
+            // room when one starts.
+            val slack = (viewport - with(density) { boardHeight.toDp() }) / 2
+            val topSpace by animateDpAsState(if (hasReading) 0.dp else slack.coerceAtLeast(0.dp), label = "board-top")
+
+            // A model writes faster than anyone reads, so the page does not chase the text. When a
+            // reading is asked for it moves once, far enough to put the first lines in view, and
+            // holds room below them so that move never has to wait for the text to arrive.
+            var holdRoom by rememberSaveable { mutableStateOf(false) }
+            var placedRun by rememberSaveable { mutableIntStateOf(state.run) }
+            LaunchedEffect(state.run) {
+                if (state.run == placedRun) return@LaunchedEffect
+                placedRun = state.run
+                val textTop = snapshotFlow { boardHeight }.first { it > 0 }
+                if (textTop - scroll.value > viewportPx * TEXT_IN_VIEW) {
+                    holdRoom = true
+                    withFrameNanos { } // let the room be laid out before scrolling into it
+                    scroll.animateScrollTo((textTop - viewportPx * TEXT_STARTS_AT).toInt().coerceAtLeast(0))
+                }
             }
-            Button(onClick = onInterpret, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.spreads_interpret))
+
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
+                Spacer(Modifier.height(topSpace))
+                SpreadBoard(
+                    spread = spread,
+                    deck = deck,
+                    drawnCards = state.drawn,
+                    onCardClick = { card, _ -> onCardClick(card.id) },
+                    // Up to a third more than the screen: big spreads scroll rather than shrink.
+                    maxHeight = viewport * 1.35f,
+                    preferredHeight = viewport,
+                    modifier = Modifier.padding(horizontal = 8.dp).onSizeChanged { boardHeight = it.height },
+                )
+                if (hasReading) {
+                    ReadingText(
+                        state = state,
+                        onRetry = onRetry,
+                        modifier = Modifier.heightIn(min = if (holdRoom) viewport * (1f - TEXT_STARTS_AT) else 0.dp),
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
 }
 
-@Composable
-private fun InterpretationStage(
-    state: ReadingFlowUiState,
-    isSaved: Boolean,
-    onCardClick: (String) -> Unit,
-    onRetry: () -> Unit,
-    onSave: () -> Unit,
-) {
-    val spread = state.spread ?: return
-    val deck = state.deck ?: return
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(300.dp),
-        ) {
-            SpreadBoard(
-                spread = spread,
-                deck = deck,
-                drawnCards = state.drawn,
-                onCardClick = { card, _ -> onCardClick(card.id) },
-                showLabels = false,
-                cardSizeFraction = 0.16f,
-            )
-        }
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                state.backendFallbackNotice?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.padding(bottom = 6.dp),
-                    )
-                }
-                state.interpretationStatus?.let {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Spinner ringed by a continuous burst of sparkles —
-                        // re-uses CardSparkleEmitter with a periodic trigger
-                        // bump so the loop pulses every ~700ms. Particles fade
-                        // over ~650ms so the sparkle ring stays roughly
-                        // continuous without piling up.
-                        Box(
-                            modifier = Modifier.size(56.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            var sparkleKey by remember { mutableIntStateOf(1) }
-                            LaunchedEffect(Unit) {
-                                while (true) {
-                                    kotlinx.coroutines.delay(700)
-                                    sparkleKey++
-                                }
-                            }
-                            CardSparkleEmitter(
-                                triggerKey = sparkleKey,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.5.dp,
-                            )
-                        }
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(start = 10.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                AnimatedVisibility(visible = state.interpretation.isNotBlank()) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Re-interpret action shows up only once a generation
-                        // has completed (or paused) — useful when the small
-                        // model produces wonky output and you want another roll.
-                        // Promoted to a full-width filled Button so it carries
-                        // the same visual weight as Interpret/Save and isn't
-                        // hidden in a corner.
-                        if (!state.isInterpreting && state.interpretationError == null) {
-                            Button(
-                                onClick = onRetry,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 10.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(stringResource(R.string.spreads_reinterpret))
-                            }
-                        }
+// Where on the screen a reading's first line may already be for the page to stay put, and where
+// the page puts it otherwise, as fractions of the screen's height from the top.
+private const val TEXT_IN_VIEW = 0.55f
+private const val TEXT_STARTS_AT = 0.3f
 
-                        // Scrollable interpretation body, with an explicit
-                        // scrollbar overlay (Compose's default verticalScroll
-                        // doesn't show one), auto-scroll-to-bottom while
-                        // streaming, and a "jump to latest" FAB if the user
-                        // has scrolled up away from the live tokens.
-                        val scrollState = rememberScrollState()
-                        val scrollbarColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        val coroutineScope = rememberCoroutineScope()
-                        // ~50px of slack so we treat "almost at bottom" as
-                        // "at bottom" — otherwise auto-scroll fails to catch
-                        // the very last token's newline + padding.
-                        val isNearBottom by remember {
-                            derivedStateOf {
-                                scrollState.maxValue == 0 ||
-                                    scrollState.value >= scrollState.maxValue - 50
-                            }
-                        }
-                        // Auto-stick to the bottom while text is streaming in,
-                        // but only if the user hasn't manually scrolled up.
-                        LaunchedEffect(state.interpretation) {
-                            if (isNearBottom) {
-                                scrollState.scrollTo(scrollState.maxValue)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(280.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(scrollState)
-                                    .padding(end = 12.dp),
-                            ) {
-                                MarkdownText(text = state.interpretation)
-                            }
-                            if (scrollState.maxValue > 0) {
-                                Canvas(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .fillMaxHeight()
-                                        .width(6.dp),
-                                ) {
-                                    val viewport = size.height
-                                    val totalContent = viewport + scrollState.maxValue
-                                    val thumbHeight = (viewport * viewport / totalContent)
-                                        .coerceAtLeast(40f)
-                                    val frac = scrollState.value.toFloat() /
-                                        scrollState.maxValue.toFloat().coerceAtLeast(1f)
-                                    val thumbY = (viewport - thumbHeight) * frac
-                                    drawRoundRect(
-                                        color = scrollbarColor.copy(alpha = 0.65f),
-                                        topLeft = Offset(0f, thumbY),
-                                        size = Size(size.width, thumbHeight),
-                                        cornerRadius = CornerRadius(size.width / 2f),
-                                    )
-                                }
-                            }
-                            // Jump-to-latest FAB: surfaces while generation
-                            // is live AND the user has scrolled up. Tap to
-                            // animate back to the streaming tail.
-                            if (state.isInterpreting && !isNearBottom) {
-                                SmallFloatingActionButton(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            scrollState.animateScrollTo(scrollState.maxValue)
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = stringResource(R.string.spreads_jump_to_latest),
-                                    )
-                                }
-                            }
-                        }
-                    }
+@Composable
+private fun ReadingText(state: ReadingFlowUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+        state.notice?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+        }
+        if (state.interpretation.isNotBlank()) {
+            MarkdownText(text = state.interpretation)
+        }
+        if (state.isInterpreting) {
+            WritingIndicator(status = state.status ?: "Writing", progress = state.progress, modifier = Modifier.padding(top = 8.dp))
+        }
+        state.error?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) { Text("Try again") }
+        }
+    }
+}
+
+@Composable
+private fun ReadingActions(
+    state: ReadingFlowUiState,
+    onSave: () -> Unit,
+    onInterpret: () -> Unit,
+    onAgain: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val saved = state.savedReadingId != null
+    Surface(tonalElevation = 3.dp) {
+        Column {
+            // The text being written is often below the fold; this is the sign that more is coming.
+            if (state.isInterpreting) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(onClick = onSave, enabled = !saved, modifier = Modifier.weight(1f)) {
+                    Text(if (saved) "Saved" else "Save")
                 }
-                state.interpretationError?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Button(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
-                        Text(stringResource(R.string.spreads_try_again))
+                when {
+                    state.isInterpreting -> FilledTonalButton(onClick = onStop, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Stop")
+                    }
+                    state.interpretation.isBlank() -> Button(onClick = onInterpret, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Interpret")
+                    }
+                    else -> FilledTonalButton(onClick = onAgain, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Again")
                     }
                 }
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+    }
+}
+
+/** Shown while a model is on its way, so it is clear when Interpret will start using it. */
+@Composable
+private fun DownloadBanner(spec: ModelSpec, state: ModelStore.State, onRetry: () -> Unit, onPause: () -> Unit) {
+    val visible = state is ModelStore.State.Downloading || state is ModelStore.State.Verifying || state is ModelStore.State.Failed
+    AnimatedVisibility(visible = visible) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (state is ModelStore.State.Failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+            ),
         ) {
-            Button(
-                onClick = onSave,
-                enabled = !isSaved,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(if (isSaved) R.string.spreads_save_done else R.string.spreads_save))
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = when (state) {
+                            is ModelStore.State.Downloading -> "Getting the ${spec.title} model: ${formatBytes(state.doneBytes)} of ${formatBytes(state.totalBytes)}"
+                            is ModelStore.State.Verifying -> "Checking the ${spec.title} model"
+                            is ModelStore.State.Failed -> "${spec.title} model: ${state.message}"
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    when (state) {
+                        is ModelStore.State.Downloading -> TextButton(onClick = onPause) { Text("Pause") }
+                        is ModelStore.State.Failed -> TextButton(onClick = onRetry) { Text("Retry") }
+                        else -> Unit
+                    }
+                }
+                if (state is ModelStore.State.Downloading) {
+                    LinearProgressIndicator(progress = { state.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                } else if (state is ModelStore.State.Verifying) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                }
             }
         }
     }

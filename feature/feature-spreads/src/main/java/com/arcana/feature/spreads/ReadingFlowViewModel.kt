@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.arcana.core.domain.model.AiBackendType
 import com.arcana.core.domain.model.DeckArt
 import com.arcana.core.domain.model.DrawnCard
+import com.arcana.core.domain.model.Orientation
 import com.arcana.core.domain.model.Spread
 import com.arcana.core.domain.repository.CardRepository
+import com.arcana.core.domain.repository.ReadingRepository
 import com.arcana.core.domain.repository.SettingsRepository
 import com.arcana.core.domain.repository.SpreadRepository
 import com.arcana.core.domain.usecase.DrawSpreadUseCase
@@ -16,8 +18,10 @@ import com.arcana.service.ai.InterpretationChunk
 import com.arcana.service.ai.InterpretationRequest
 import com.arcana.service.ai.InterpretationTone
 import com.arcana.service.ai.InterpreterRegistry
-import com.arcana.service.ai.local.ModelInstaller
-import com.arcana.service.ai.local.ModelManifest
+import com.arcana.service.ai.local.LlamaEngine
+import com.arcana.service.ai.local.ModelCatalog
+import com.arcana.service.ai.local.ModelSpec
+import com.arcana.service.ai.local.ModelStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,13 +33,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class ReadingStage { QUESTION, SHUFFLING, REVEAL, INTERPRETATION }
+enum class ReadingStage { QUESTION, SHUFFLING, READING }
 
 data class ReadingFlowUiState(
     val spread: Spread? = null,
     val deck: DeckArt? = null,
-    /** True if [SpreadRepository.getSpreadById] returned null on init —
-     *  e.g. user followed a stale deep-link to a deleted custom spread. */
+    /** The spread this screen was opened for no longer exists (a custom spread that was deleted). */
     val spreadNotFound: Boolean = false,
     val stage: ReadingStage = ReadingStage.QUESTION,
     val question: String = "",
@@ -44,52 +47,42 @@ data class ReadingFlowUiState(
     val drawn: List<DrawnCard> = emptyList(),
     val interpretation: String = "",
     val isInterpreting: Boolean = false,
-    val interpretationStatus: String? = null,
-    val interpretationError: String? = null,
+    /** How many times a reading has been asked for here. The page moves to the text each time. */
+    val run: Int = 0,
+    /** What the interpreter is doing while there is nothing new to read. */
+    val status: String? = null,
+    val progress: Float? = null,
+    val error: String? = null,
+    /** Why this reading did not come from the backend chosen in Settings. */
+    val notice: String? = null,
     val savedReadingId: String? = null,
-    /** True when we should be showing the first-tap "install offline AI?" dialog. */
-    val showFirstTapPrompt: Boolean = false,
-    /** Bytes to display in the dialog; cached from [ModelManifest]. */
-    val firstTapDownloadBytes: Long = ModelManifest.DEFAULT.expectedBytes,
-    /**
-     * Set when the chosen AI backend wasn't available and we fell through
-     * to rule-based for this generation. Lets the screen surface a small
-     * banner so the user understands why the prose isn't from their
-     * chosen backend. Cleared by [requestInterpretation] on every new run.
-     */
-    val backendFallbackNotice: String? = null,
+    /** Offer to install an on-device model, the first time Interpret is tapped. */
+    val offerInstall: Boolean = false,
 )
 
 @HiltViewModel
 class ReadingFlowViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val saved: SavedStateHandle,
     private val spreadRepository: SpreadRepository,
     private val cardRepository: CardRepository,
     private val settingsRepository: SettingsRepository,
+    private val readingRepository: ReadingRepository,
     private val drawSpread: DrawSpreadUseCase,
     private val saveReading: SaveReadingUseCase,
     private val interpreterRegistry: InterpreterRegistry,
-    private val modelInstaller: ModelInstaller,
+    private val modelStore: ModelStore,
+    engine: LlamaEngine,
 ) : ViewModel() {
 
-    init {
-        // Force-reference cardRepository to keep it bound (used indirectly by DrawSpreadUseCase).
-        cardRepository.hashCode()
-    }
-
-    private val spreadId: String = checkNotNull(savedStateHandle["spreadId"]) {
-        "spreadId required as nav argument"
-    }
+    private val spreadId: String = checkNotNull(saved["spreadId"])
 
     private val _state = MutableStateFlow(ReadingFlowUiState())
     val state: StateFlow<ReadingFlowUiState> = _state.asStateFlow()
 
-    /**
-     * Mirror of [ModelInstaller.state] so the reading screen can surface a
-     * progress banner / failure card without each composable touching the
-     * service-layer singleton directly.
-     */
-    val installState: StateFlow<ModelInstaller.State> = modelInstaller.state
+    val modelStates: StateFlow<Map<String, ModelStore.State>> = modelStore.states
+
+    /** The models offered in the install dialog. Empty on a phone that cannot run one. */
+    val installable: List<ModelSpec> = if (engine.supported) ModelCatalog.offered else emptyList()
 
     private var interpretJob: Job? = null
 
@@ -100,130 +93,77 @@ class ReadingFlowViewModel @Inject constructor(
                 _state.update { it.copy(spreadNotFound = true) }
                 return@launch
             }
-            val appearance = settingsRepository.appearance.first()
-            val deck = settingsRepository.getAvailableDecks().firstOrNull { it.id == appearance.deckArtId }
-                ?: settingsRepository.getAvailableDecks().firstOrNull()
-            _state.update { it.copy(spread = spread, deck = deck) }
+            _state.update { restore(it.copy(spread = spread, deck = settingsRepository.currentDeck())) }
         }
     }
 
-    fun onQuestionChanged(q: String) = _state.update { it.copy(question = q) }
-    fun onToggleReversed(allow: Boolean) = _state.update { it.copy(allowReversed = allow) }
-    fun onToneChanged(tone: InterpretationTone) = _state.update { it.copy(tone = tone) }
+    fun onQuestionChanged(q: String) = change { it.copy(question = q) }
+    fun onToggleReversed(allow: Boolean) = change { it.copy(allowReversed = allow) }
+    fun onToneChanged(tone: InterpretationTone) = change { it.copy(tone = tone) }
 
     fun startShuffle() {
+        val spread = _state.value.spread ?: return
         viewModelScope.launch {
             _state.update { it.copy(stage = ReadingStage.SHUFFLING) }
-            val spread = _state.value.spread ?: return@launch
             delay(SHUFFLE_DURATION_MS)
             val drawn = drawSpread(spread, allowReversed = _state.value.allowReversed)
-            _state.update { it.copy(drawn = drawn, stage = ReadingStage.REVEAL) }
+            change { it.copy(drawn = drawn, stage = ReadingStage.READING) }
         }
-    }
-
-    fun goToInterpretation() {
-        _state.update { it.copy(stage = ReadingStage.INTERPRETATION) }
     }
 
     /**
-     * Entry point the Interpret button calls. Gated on the
-     * "first-tap-prompt-shown" flag: the very first time anyone taps it,
-     * surface the install-offline-AI dialog instead of generating immediately.
-     * On every subsequent tap (and after the dialog is answered once), this
-     * just delegates to [goToInterpretation] + [requestInterpretation].
+     * The Interpret button. The first time, on a phone with no model yet, it offers to install
+     * one instead of quietly producing the built-in text.
      */
     fun onInterpretTapped() {
         if (_state.value.isInterpreting) return
         viewModelScope.launch {
             val ai = settingsRepository.ai.first()
-            // Skip the first-tap install dialog when:
-            //  - the user already saw it once and made a choice, OR
-            //  - a local model is already installed (e.g. user installed
-            //    via Settings → Manage decks before tapping Interpret —
-            //    promoting them to install AGAIN would be confusing).
-            // Also flip the flag in the second case so the dialog never
-            // resurfaces in a future session.
-            val alreadyInstalled = modelInstaller.modelFile != null
-            if (!ai.interpretPromptShown && !alreadyInstalled) {
-                _state.update {
-                    it.copy(
-                        showFirstTapPrompt = true,
-                        firstTapDownloadBytes = modelInstaller.manifest.value.expectedBytes,
-                    )
-                }
+            val hasModel = modelStore.active() != null
+            if (!ai.interpretPromptShown && !hasModel && installable.isNotEmpty() && ai.backendType != AiBackendType.CLAUDE_API) {
+                _state.update { it.copy(offerInstall = true) }
             } else {
-                if (!ai.interpretPromptShown && alreadyInstalled) {
-                    settingsRepository.setInterpretPromptShown(true)
-                }
-                beginInterpretation()
+                if (!ai.interpretPromptShown) settingsRepository.setInterpretPromptShown(true)
+                requestInterpretation()
             }
         }
     }
 
-    /** First-tap dialog: user picked a specific model to install. */
-    fun onFirstTapInstall(manifest: ModelManifest) {
+    fun onInstallChosen(spec: ModelSpec) {
         viewModelScope.launch {
             settingsRepository.setInterpretPromptShown(true)
             settingsRepository.setAiBackend(AiBackendType.LOCAL_LLM)
-            // Kick off the download in the background. THIS reading falls
-            // through to the rule-based interpreter via InterpreterRegistry's
-            // fallback because the model isn't installed yet; the install
-            // banner shows progress while it downloads.
-            modelInstaller.installModel(manifest)
-            _state.update { it.copy(showFirstTapPrompt = false) }
-            beginInterpretation()
+            modelStore.install(spec)
+            _state.update { it.copy(offerInstall = false) }
+            // This reading uses the built-in text; the model is ready for the next one.
+            requestInterpretation()
         }
     }
 
-    /** First-tap dialog: user picked "Not now". */
-    fun onFirstTapNotNow() {
+    fun onInstallDeclined() {
         viewModelScope.launch {
             settingsRepository.setInterpretPromptShown(true)
-            _state.update { it.copy(showFirstTapPrompt = false) }
-            beginInterpretation()
+            _state.update { it.copy(offerInstall = false) }
+            requestInterpretation()
         }
     }
 
-    /** Outside-tap / back-press on the dialog. Doesn't burn the flag — the user might tap Interpret again. */
-    fun onFirstTapDismissed() {
-        _state.update { it.copy(showFirstTapPrompt = false) }
-    }
-
-    private fun beginInterpretation() {
-        goToInterpretation()
-        requestInterpretation()
-    }
+    /** Dismissed without answering: ask again next time. */
+    fun onInstallDismissed() = _state.update { it.copy(offerInstall = false) }
 
     fun requestInterpretation() {
         val current = _state.value
         val spread = current.spread ?: return
-        if (current.isInterpreting) return
+        if (current.isInterpreting || current.drawn.isEmpty()) return
         interpretJob?.cancel()
         interpretJob = viewModelScope.launch {
-            _state.update {
-                it.copy(
-                    isInterpreting = true,
-                    interpretation = "",
-                    interpretationError = null,
-                    interpretationStatus = null,
-                )
-            }
+            change { it.copy(isInterpreting = true, run = it.run + 1, interpretation = "", error = null, status = null, progress = null) }
             val ai = settingsRepository.ai.first()
             val interpreter = interpreterRegistry.activeInterpreter()
-            // The registry silently falls back to RULE_BASED when the user's
-            // chosen backend is unavailable. That's the right default but
-            // can be confusing — surface a one-shot notice so the user
-            // knows why their reading just came out as rule-based prose.
-            val notice = when {
-                ai.backendType == AiBackendType.LOCAL_LLM &&
-                    interpreter.type == AiBackendType.RULE_BASED ->
-                    "Local AI not installed yet — using rule-based interpretation. Install from Settings → AI Interpreter."
-                ai.backendType == AiBackendType.CLAUDE_API &&
-                    interpreter.type == AiBackendType.RULE_BASED ->
-                    "Add a Claude API key in Settings to use the cloud backend. Falling back to rule-based for this reading."
-                else -> null
+            val fellBack = ai.backendType != AiBackendType.RULE_BASED && interpreter.type == AiBackendType.RULE_BASED
+            _state.update {
+                it.copy(notice = if (fellBack) "No reading model is installed yet, so this is the cards' own meanings." else null)
             }
-            _state.update { it.copy(backendFallbackNotice = notice) }
             val request = InterpretationRequest(
                 spread = spread,
                 drawnCards = current.drawn,
@@ -232,47 +172,97 @@ class ReadingFlowViewModel @Inject constructor(
             )
             interpreter.interpret(request).collect { chunk ->
                 when (chunk) {
-                    is InterpretationChunk.Text -> _state.update {
-                        it.copy(interpretation = it.interpretation + chunk.delta, interpretationStatus = null)
-                    }
-                    is InterpretationChunk.Status -> _state.update {
-                        it.copy(interpretationStatus = chunk.message)
-                    }
-                    is InterpretationChunk.Error -> _state.update {
-                        it.copy(interpretationError = chunk.message, isInterpreting = false)
-                    }
-                    is InterpretationChunk.Complete -> _state.update {
-                        it.copy(isInterpreting = false, interpretationStatus = null)
-                    }
+                    is InterpretationChunk.Text -> _state.update { it.copy(interpretation = it.interpretation + chunk.delta, status = null, progress = null) }
+                    is InterpretationChunk.Status -> _state.update { it.copy(status = chunk.message, progress = chunk.progress) }
+                    is InterpretationChunk.Error -> _state.update { it.copy(error = chunk.message, isInterpreting = false, status = null, progress = null) }
+                    is InterpretationChunk.Complete -> finished()
                 }
             }
         }
     }
 
-    /** Called by the in-screen download banner if the install fails. */
-    fun retryLocalInstall() = modelInstaller.install()
+    /** Stops the writing and keeps what was written so far. */
+    fun stopInterpretation() {
+        interpretJob?.cancel()
+        finished()
+    }
 
-    /** Called by the in-screen download banner's cancel button. */
-    fun cancelLocalInstall() = modelInstaller.cancel()
+    private fun finished() {
+        change { it.copy(isInterpreting = false, status = null, progress = null) }
+        // A reading that was saved before it was interpreted gets the text added to it.
+        val current = _state.value
+        val id = current.savedReadingId ?: return
+        if (current.interpretation.isBlank()) return
+        viewModelScope.launch { readingRepository.updateInterpretation(id, current.interpretation.trim()) }
+    }
+
+    fun install(spec: ModelSpec) = modelStore.install(spec)
+    fun pauseInstall(spec: ModelSpec) = modelStore.pause(spec)
 
     fun saveCurrentReading() {
         val current = _state.value
         val spread = current.spread ?: return
         val deck = current.deck ?: return
-        if (current.drawn.isEmpty()) return
+        if (current.drawn.isEmpty() || current.savedReadingId != null) return
         viewModelScope.launch {
             val id = saveReading(
                 spread = spread,
                 drawnCards = current.drawn,
                 question = current.question,
-                interpretation = current.interpretation.ifBlank { null },
+                interpretation = current.interpretation.trim().ifBlank { null },
                 deckArtId = deck.id,
             )
-            _state.update { it.copy(savedReadingId = id) }
+            change { it.copy(savedReadingId = id) }
         }
     }
 
-    companion object {
-        private const val SHUFFLE_DURATION_MS = 2_000L
+    // ---------------------------------------------------------------------------------------
+    // A reading in progress has to outlive the app being pushed out of memory, which is likely
+    // right after a model has been loaded. What matters is kept in the saved state.
+
+    private fun change(transform: (ReadingFlowUiState) -> ReadingFlowUiState) {
+        _state.update(transform)
+        val s = _state.value
+        saved[KEY_STAGE] = if (s.stage == ReadingStage.SHUFFLING) ReadingStage.QUESTION.name else s.stage.name
+        saved[KEY_QUESTION] = s.question
+        saved[KEY_REVERSED] = s.allowReversed
+        saved[KEY_TONE] = s.tone.name
+        saved[KEY_DRAWN] = ArrayList(s.drawn.map { "${it.card.id}|${it.orientation.name}|${it.positionIndex}" })
+        // While the model is still writing, the half-written text is not worth restoring.
+        saved[KEY_TEXT] = if (s.isInterpreting) "" else s.interpretation
+        saved[KEY_SAVED_ID] = s.savedReadingId
+    }
+
+    private suspend fun restore(base: ReadingFlowUiState): ReadingFlowUiState {
+        val stage = saved.get<String>(KEY_STAGE)?.let { runCatching { ReadingStage.valueOf(it) }.getOrNull() } ?: return base
+        val drawn = saved.get<ArrayList<String>>(KEY_DRAWN).orEmpty().mapNotNull { line ->
+            val parts = line.split('|')
+            val card = cardRepository.getCardById(parts.getOrNull(0).orEmpty()) ?: return@mapNotNull null
+            DrawnCard(
+                card = card,
+                orientation = runCatching { Orientation.valueOf(parts[1]) }.getOrDefault(Orientation.UPRIGHT),
+                positionIndex = parts.getOrNull(2)?.toIntOrNull() ?: return@mapNotNull null,
+            )
+        }
+        return base.copy(
+            stage = if (stage == ReadingStage.READING && drawn.isEmpty()) ReadingStage.QUESTION else stage,
+            question = saved[KEY_QUESTION] ?: "",
+            allowReversed = saved[KEY_REVERSED] ?: true,
+            tone = saved.get<String>(KEY_TONE)?.let { runCatching { InterpretationTone.valueOf(it) }.getOrNull() } ?: InterpretationTone.GROUNDED,
+            drawn = drawn,
+            interpretation = saved[KEY_TEXT] ?: "",
+            savedReadingId = saved[KEY_SAVED_ID],
+        )
+    }
+
+    private companion object {
+        const val SHUFFLE_DURATION_MS = 2_000L
+        const val KEY_STAGE = "stage"
+        const val KEY_QUESTION = "question"
+        const val KEY_REVERSED = "reversed"
+        const val KEY_TONE = "tone"
+        const val KEY_DRAWN = "drawn"
+        const val KEY_TEXT = "text"
+        const val KEY_SAVED_ID = "savedId"
     }
 }
