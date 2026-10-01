@@ -1,16 +1,23 @@
 #!/bin/bash
-# Downloads all 78 Rider-Waite-Smith (1909) tarot card scans from Wikimedia
-# Commons (public domain). Pulls 600px-wide JPEG thumbnails to keep the bundled
-# APK small.
+# Fetches the 78 Rider-Waite-Smith (1909) card scans from Wikimedia Commons (public domain) and
+# writes them into the app as WebP. The scans are fetched 960 pixels wide and re-encoded at
+# quality 80, which is about two thirds the size of the JPEGs with no difference you can see on
+# a phone. Needs curl and cwebp (brew install webp).
+#
+# The file names are the cards' imageRef names in cards.json, without the extension.
 #
 # Usage: bash scripts/fetch-rider-waite.sh
 
 set -u
 
-DEST="C:/TarotApp/app/src/main/assets/decks/rider-waite"
-WIDTH=600
-SLEEP="0.05"  # tiny delay between requests to be polite
+DEST="$(cd "$(dirname "$0")/.." && pwd)/app/src/main/assets/decks/rider-waite"
+WIDTH=960
+QUALITY=80
+SLEEP="0.05" # a short pause between requests, to be polite
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
+command -v cwebp >/dev/null || { echo "cwebp is not installed (brew install webp)"; exit 1; }
 mkdir -p "$DEST"
 
 OK=0
@@ -19,25 +26,18 @@ FAILURES=""
 
 download() {
     local wm_name="$1"
-    local out_name="$2"
+    local name="${2%.jpg}"
     local url="https://commons.wikimedia.org/wiki/Special:FilePath/${wm_name}?width=${WIDTH}"
-    local out="$DEST/$out_name"
-    if curl -sSL --max-time 60 -A "ArcanaApp/1.0 (https://github.com/local; downloading public-domain RWS scans)" -o "$out" "$url"; then
-        local size
-        size=$(wc -c < "$out" 2>/dev/null || echo 0)
-        if [ "$size" -lt 1000 ]; then
-            FAIL=$((FAIL + 1))
-            FAILURES="$FAILURES $out_name(too-small:$size)"
-            rm -f "$out"
-            echo "FAIL  $wm_name -> $out_name ($size bytes)"
-        else
-            OK=$((OK + 1))
-            echo "OK    $wm_name -> $out_name ($size bytes)"
-        fi
+    local jpg="$TMP/$name.jpg"
+    if curl -sSL --max-time 60 -A "Arcana (https://github.com/PimpinPumpkin/Arcana; public-domain RWS scans)" -o "$jpg" "$url" \
+        && [ "$(wc -c < "$jpg")" -ge 1000 ] \
+        && cwebp -quiet -q "$QUALITY" -m 6 -sharp_yuv "$jpg" -o "$DEST/$name.webp"; then
+        OK=$((OK + 1))
+        echo "OK    $wm_name -> $name.webp"
     else
         FAIL=$((FAIL + 1))
-        FAILURES="$FAILURES $out_name(curl-error)"
-        echo "FAIL  $wm_name -> $out_name (curl error)"
+        FAILURES="$FAILURES $name"
+        echo "FAIL  $wm_name"
     fi
     sleep "$SLEEP"
 }
@@ -103,13 +103,8 @@ download "Pents13.jpg" "pentacles_queen.jpg"
 download "Pents14.jpg" "pentacles_king.jpg"
 
 echo ""
-echo "=========================================="
-echo "DONE — succeeded: $OK, failed: $FAIL"
+echo "Done: $OK fetched, $FAIL failed."
 if [ -n "$FAILURES" ]; then
-    echo "Failed downloads:$FAILURES"
+    echo "Failed:$FAILURES"
 fi
-echo "Saved to: $DEST"
-ls -la "$DEST" | head -5
-echo ""
-ls "$DEST" | wc -l
-echo "files in deck folder"
+echo "$(ls "$DEST" | wc -l | tr -d ' ') files in $DEST"
