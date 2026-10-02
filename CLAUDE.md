@@ -75,3 +75,10 @@ CI publishes, and are debug-signed unless `ARCANA_KEYSTORE_PATH`, `ARCANA_KEYSTO
 - `./gradlew :app:generateBaselineProfile` refreshes the baseline profile on an emulator Gradle
   manages. Never on a phone: the harness uninstalls the app when it is done. Do not edit source
   files while it runs.
+
+## README screenshots
+
+`docs/screenshots` holds ten, shown in two rows of five. To refresh one: take it on a phone with
+the demo status bar on (9:30, battery only), in the dark Mystic Twilight theme except for the
+Themes shot, scale it to 720 by 1560 and save it as a 256-color PNG. `docs/logo.svg` is the
+launcher icon redrawn as an SVG; change the two together.
