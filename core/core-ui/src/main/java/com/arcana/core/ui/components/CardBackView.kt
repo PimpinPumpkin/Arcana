@@ -47,18 +47,16 @@ fun CardBackView(
     val version = index.version
     val uri = remember(deck?.id, version) { deck?.let(index::backUri) }
     var broken by remember(uri) { mutableStateOf(false) }
-    val accent = MaterialTheme.colorScheme.tertiary
-    val deep = MaterialTheme.colorScheme.primary
+    // The "fixed" roles are the same tones in light and dark, so the back of a card does not turn
+    // pale when the app goes dark: a deep field in the theme's main color, trimmed in its second.
+    val scheme = MaterialTheme.colorScheme
+    val accent = scheme.secondaryFixedDim
     Box(
         modifier = modifier
             .aspectRatio(CARD_ASPECT)
             .shadow(8.dp, CardShapes.tarotCard)
             .clip(CardShapes.tarotCard)
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(deep, deep.copy(alpha = 0.7f), Color.Black.copy(alpha = 0.85f)),
-                ),
-            )
+            .background(Brush.linearGradient(listOf(scheme.onPrimaryFixed, scheme.onPrimaryFixedVariant, scheme.onPrimaryFixed)))
             .border(1.dp, accent.copy(alpha = 0.6f), CardShapes.tarotCard),
         contentAlignment = Alignment.Center,
     ) {
@@ -82,8 +80,8 @@ fun CardBackView(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 // Everything is sized from the card, so a small card gets a small frame.
                 val unit = size.minDimension
-                frame(inset = unit * 0.08f, width = unit * 0.02f, color = accent.copy(alpha = 0.7f))
-                frame(inset = unit * 0.16f, width = unit * 0.01f, color = accent.copy(alpha = 0.3f))
+                frame(inset = unit * 0.08f, width = unit * 0.02f, color = accent.copy(alpha = 0.85f))
+                frame(inset = unit * 0.16f, width = unit * 0.01f, color = accent.copy(alpha = 0.4f))
 
                 val cx = size.width / 2f
                 val cy = size.height / 2f
@@ -91,11 +89,11 @@ fun CardBackView(
                 val innerR = outerR * 0.4f
                 for (i in 0 until 8) {
                     rotate(degrees = i * 45f, pivot = Offset(cx, cy)) {
-                        drawCircle(color = accent.copy(alpha = 0.6f), radius = innerR / 4f, center = Offset(cx, cy - outerR))
+                        drawCircle(color = accent.copy(alpha = 0.75f), radius = innerR / 4f, center = Offset(cx, cy - outerR))
                     }
                 }
                 drawCircle(
-                    color = accent.copy(alpha = 0.7f),
+                    color = accent.copy(alpha = 0.85f),
                     radius = innerR,
                     center = Offset(cx, cy),
                     style = Stroke(width = unit * 0.015f),
