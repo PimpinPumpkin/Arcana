@@ -95,6 +95,36 @@ update.
 </details>
 
 <details>
+<summary><b>Check you got the real thing</b></summary>
+
+<br>
+
+Every Arcana APK, from any channel, is signed with the same key. Its certificate fingerprint is:
+
+```
+SHA-256  2D:42:BD:2C:77:03:F2:1A:A0:EA:6D:FB:F4:0B:61:25:E4:4D:8E:1A:E4:EE:1C:A2:63:1F:1E:8D:53:83:75:09
+```
+
+Check a downloaded file against it before installing:
+
+```bash
+apksigner verify --print-certs arcana-*.apk
+```
+
+On the phone, [App Verifier](https://github.com/soupslurpr/AppVerifier) checks the same thing. It
+wants the package name on the first line and the fingerprint on the second:
+
+```
+com.arcana.app
+2D:42:BD:2C:77:03:F2:1A:A0:EA:6D:FB:F4:0B:61:25:E4:4D:8E:1A:E4:EE:1C:A2:63:1F:1E:8D:53:83:75:09
+```
+
+Android enforces this for you after the first install: an update signed with a different key is
+refused.
+
+</details>
+
+<details>
 <summary><b>Models and download sizes</b></summary>
 
 <br>
@@ -165,10 +195,11 @@ summary.
 - One reading runs at a time, and it can be stopped between any two words.
 
 **The engine.** [llama.cpp](https://github.com/ggml-org/llama.cpp), built from source as a
-submodule, on the CPU. It ships one math library per generation of ARM processor and picks the
-best one the phone supports. On a 2020 phone, with a small model, that is the difference between
-43 and 70 tokens a second when reading the prompt. Writing uses the phone's fast cores; reading
-the prompt uses all of them.
+submodule, on the CPU. It ships one math library per generation of ARM processor and uses the
+best one that every core of the phone can run, down to a plain one for the oldest 64-bit chips.
+On a 2020 phone, with a small model, the right library is the difference between 43 and 70 tokens
+a second when reading the prompt. About, in Settings, says which one a phone got. Writing uses
+the phone's fast cores; reading the prompt uses all of them.
 
 **The spreads.** A spread is a list of positions on a unit square. A layout solver finds the
 largest card size at which nothing overlaps, counting cards that lie sideways, and keeps the

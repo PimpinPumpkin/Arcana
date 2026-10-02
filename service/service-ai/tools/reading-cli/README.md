@@ -27,11 +27,13 @@ That writes one JSON file per sample reading: a one-card draw, three-card spread
 /tmp/reading-cli/reading-cli model.gguf /tmp/scripts/past-present-future.json
 ```
 
-It prints the reading as the app would show it, then how long loading, reading the prompt and writing took. Options: `--temp`, `--top-k`, `--top-p`, `--repeat-penalty`, `--seed`, `--threads`, `--batch-threads`, `--no-grammar`.
+It prints the reading as the app would show it, then how long loading, reading the prompt and writing took. Options: `--temp`, `--top-k`, `--top-p`, `--repeat-penalty`, `--seed`, `--threads`, `--batch-threads`, `--no-grammar`, `--cpu-libraries`.
 
 ## On a phone
 
 To time a model on real hardware, build the tool with the NDK using the options in `src/main/cpp/CMakeLists.txt`, push `reading-cli`, the `.so` files beside it, a model and a script to `/data/local/tmp`, and run it from `adb shell` with `LD_LIBRARY_PATH=.`. The app writes with the phone's fast cores and reads the prompt with all of them; `--threads 2 --batch-threads 8` is that on a phone with two fast cores.
+
+On a phone the processor library has to be named, best first, the way the app's `CpuLibraries` would: `--cpu-libraries android_armv8.2_2,android_armv8.2_1,android_armv8.0_1`. The first one the processor can run is used and printed. Giving only `android_armv8.0_1` shows what an old phone gets.
 
 ## Adding a model to the picker
 
