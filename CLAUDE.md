@@ -24,6 +24,10 @@ the phone. See README.md for what it does.
 Work lands on `canary` first and is merged to `main` when it is ready. The `models-v1` release
 holds model files that installed copies of the app download; never delete or rename it.
 
+The rolling release keeps a tag that is also called `canary`. Once a fetch has brought it down,
+`git push origin canary` is refused as ambiguous: push `refs/heads/canary`, or delete the local
+tag first.
+
 ## Building
 
 `./gradlew assembleRelease` (JDK 17, Android SDK platform 37.0, NDK 28.2.13676358, CMake 3.22.1).
