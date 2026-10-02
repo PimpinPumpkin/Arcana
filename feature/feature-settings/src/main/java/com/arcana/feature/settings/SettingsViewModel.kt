@@ -77,11 +77,6 @@ class SettingsViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
-    init {
-        // A download cut short by the app closing carries on once Settings or a reading is opened.
-        modelStore.resumeInterrupted()
-    }
-
     fun setTheme(id: String) = viewModelScope.launch { settingsRepository.setThemeId(id) }
     fun setThemeMode(mode: ThemeMode) = viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     fun setDeck(id: String) = viewModelScope.launch { settingsRepository.setDeckArtId(id) }

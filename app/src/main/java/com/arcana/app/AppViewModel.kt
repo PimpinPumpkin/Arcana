@@ -8,6 +8,7 @@ import com.arcana.core.domain.model.AppearanceSettings
 import com.arcana.core.domain.model.ThemeMode
 import com.arcana.core.domain.model.ThemePreset
 import com.arcana.core.domain.repository.SettingsRepository
+import com.arcana.service.ai.local.ModelStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,13 @@ data class AppearanceState(
 class AppViewModel @Inject constructor(
     settingsRepository: SettingsRepository,
     customDeckStore: CustomDeckStore,
+    modelStore: ModelStore,
 ) : ViewModel() {
+
+    init {
+        // A model download cut short by the app closing carries on as soon as it is opened again.
+        modelStore.resumeInterrupted()
+    }
 
     val appearance: StateFlow<AppearanceState> = settingsRepository.appearance
         .map { it.toUi() }
