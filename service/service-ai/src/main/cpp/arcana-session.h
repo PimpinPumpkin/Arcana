@@ -20,6 +20,11 @@
 
 namespace arcana {
 
+// Loads the first of `names` that this processor can run. Each is one of llama.cpp's
+// per-processor math libraries ("android_armv8.2_2"), found in `dir`; llama.cpp refuses one the
+// kernel says the processor cannot run. Returns the name that loaded, or "" if none did.
+std::string load_cpu_library(const std::string &dir, const std::vector<std::string> &names);
+
 class Session {
 public:
     // Returns nullptr if the file is not a model llama.cpp can run.

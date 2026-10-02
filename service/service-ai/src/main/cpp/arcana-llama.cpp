@@ -7,9 +7,9 @@
 #include <jni.h>
 #include <android/log.h>
 #include <string>
+#include <vector>
 
 #include "arcana-session.h"
-#include "ggml-backend.h"
 
 #define TAG "ArcanaLlama"
 
@@ -33,14 +33,26 @@ arcana::Session *session(jlong handle) { return reinterpret_cast<arcana::Session
 
 extern "C" {
 
-JNIEXPORT void JNICALL
-Java_com_arcana_service_ai_local_LlamaBridge_nativeInit(JNIEnv *env, jclass, jstring lib_dir) {
+// Loads the first CPU library in `libraries` the phone can run and starts llama.cpp. Returns the
+// name of the one loaded, or null if none could be.
+JNIEXPORT jstring JNICALL
+Java_com_arcana_service_ai_local_LlamaBridge_nativeInit(JNIEnv *env, jclass, jstring lib_dir, jobjectArray libraries) {
     llama_log_set(log_errors, nullptr);
-    // The CPU math comes in one library per instruction set; this picks the best the phone has.
     const char *dir = env->GetStringUTFChars(lib_dir, nullptr);
-    ggml_backend_load_all_from_path(dir);
+    std::vector<std::string> names;
+    const jsize count = env->GetArrayLength(libraries);
+    for (jsize i = 0; i < count; i++) {
+        auto item = static_cast<jstring>(env->GetObjectArrayElement(libraries, i));
+        const char *name = env->GetStringUTFChars(item, nullptr);
+        names.emplace_back(name);
+        env->ReleaseStringUTFChars(item, name);
+        env->DeleteLocalRef(item);
+    }
+    const std::string loaded = arcana::load_cpu_library(dir, names);
     env->ReleaseStringUTFChars(lib_dir, dir);
+    if (loaded.empty()) return nullptr;
     llama_backend_init();
+    return env->NewStringUTF(loaded.c_str());
 }
 
 JNIEXPORT jlong JNICALL

@@ -12,7 +12,11 @@ internal object LlamaBridge {
         System.loadLibrary("arcana-llama")
     }
 
-    @JvmStatic external fun nativeInit(nativeLibDir: String)
+    /**
+     * @param libraries CPU libraries to try, best first (see [CpuLibraries])
+     * @return the one that loaded, or null if this processor could run none of them
+     */
+    @JvmStatic external fun nativeInit(nativeLibDir: String, libraries: Array<String>): String?
 
     /** @return a session handle, or 0 if the file is not a model llama.cpp can run */
     @JvmStatic external fun nativeLoad(path: String, contextTokens: Int, threads: Int, batchThreads: Int): Long

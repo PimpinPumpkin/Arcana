@@ -64,6 +64,10 @@ CI publishes, and are debug-signed unless `ARCANA_KEYSTORE_PATH`, `ARCANA_KEYSTO
   people have it installed.
 - New models are timed on a phone with `reading-cli` before they are described in the picker.
   The times in the summaries are measurements, not guesses.
+- llama.cpp is built as one math library per generation of ARM processor. `CpuLibraries` decides
+  which may load: only one that every core lists support for in `/proc/cpuinfo`, and the plain
+  one on chips known to misreport. Never go back to `ggml_backend_load_all_from_path`, which
+  trusts the kernel's one answer for the whole phone.
 
 ## Testing
 

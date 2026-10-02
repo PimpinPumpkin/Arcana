@@ -2,7 +2,17 @@
 
 #include <cmath>
 
+#include "ggml-backend.h"
+
 namespace arcana {
+
+std::string load_cpu_library(const std::string &dir, const std::vector<std::string> &names) {
+    for (const auto &name : names) {
+        const std::string path = dir + "/libggml-cpu-" + name + ".so";
+        if (ggml_backend_load(path.c_str())) return name;
+    }
+    return "";
+}
 
 Session *Session::load(const char *path, int n_ctx, int threads, int batch_threads) {
     llama_model_params mp = llama_model_default_params();

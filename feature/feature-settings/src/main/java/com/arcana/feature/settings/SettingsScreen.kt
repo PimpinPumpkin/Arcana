@@ -229,7 +229,8 @@ fun SettingsScreen(
                 }
                 Text(
                     "Arcana $version. Free software under the GPL 3.0. The card meanings are written for this app; the Rider-Waite-Smith art is in the public domain. " +
-                        "Models run with llama.cpp (MIT).",
+                        "Models run with llama.cpp (MIT)" +
+                        (state.engineLibrary?.let { ", in its ${it.removePrefix("android_")} build for this phone's processor." } ?: "."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

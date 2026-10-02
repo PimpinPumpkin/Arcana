@@ -40,6 +40,8 @@ data class SettingsUiState(
     val models: List<ModelRow> = emptyList(),
     /** False on a phone the on-device model was not built for. */
     val localSupported: Boolean = true,
+    /** Which build of the engine this phone's processor gets, for the About text. */
+    val engineLibrary: String? = null,
     val claudeModel: String = ClaudeModels.DEFAULT,
     val importing: Boolean = false,
     val message: String? = null,
@@ -71,6 +73,7 @@ class SettingsViewModel @Inject constructor(
             decks = settingsRepository.getAvailableDecks(),
             models = specs.map { ModelRow(it, modelStore.state(it), inUse = it.id == inUse?.id) },
             localSupported = engine.supported,
+            engineLibrary = engine.cpuLibraries.firstOrNull(),
             claudeModel = ai.claudeModelId.ifBlank { ClaudeModels.DEFAULT },
             importing = importing,
             message = message,

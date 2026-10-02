@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "arcana-session.h"
 #include "ggml-backend.h"
@@ -25,13 +26,14 @@ int main(int argc, char **argv) {
         fprintf(stderr,
                 "usage: reading-cli <model.gguf> <script.json> [--temp T] [--top-k K] [--top-p P]\n"
                 "                   [--repeat-penalty R] [--seed S] [--threads N] [--batch-threads N]\n"
-                "                   [--no-grammar]\n");
+                "                   [--no-grammar] [--cpu-libraries android_armv8.2_2,android_armv8.0_1]\n");
         return 2;
     }
     float temperature = 0.7f, top_p = 0.9f, repeat_penalty = 1.08f;
     int top_k = 40, threads = 4, batch_threads = 0;
     uint32_t seed = 1;
     bool use_grammar = true;
+    std::string cpu_libraries;
     for (int i = 3; i < argc; i++) {
         auto value = [&]() { return i + 1 < argc ? argv[++i] : "0"; };
         if (!strcmp(argv[i], "--temp")) temperature = strtof(value(), nullptr);
@@ -42,6 +44,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--threads")) threads = atoi(value());
         else if (!strcmp(argv[i], "--batch-threads")) batch_threads = atoi(value());
         else if (!strcmp(argv[i], "--no-grammar")) use_grammar = false;
+        else if (!strcmp(argv[i], "--cpu-libraries")) cpu_libraries = value();
         else {
             fprintf(stderr, "unknown option %s\n", argv[i]);
             return 2;
@@ -58,7 +61,23 @@ int main(int argc, char **argv) {
     llama_log_set([](enum ggml_log_level level, const char *text, void *) {
         if (level == GGML_LOG_LEVEL_ERROR) fputs(text, stderr);
     }, nullptr);
-    ggml_backend_load_all();
+    // On a phone the CPU libraries are tried in the order given, as the app does. Elsewhere the
+    // one compiled in is used.
+    if (!cpu_libraries.empty()) {
+        std::vector<std::string> names;
+        size_t start = 0;
+        while (start <= cpu_libraries.size()) {
+            size_t comma = cpu_libraries.find(',', start);
+            if (comma == std::string::npos) comma = cpu_libraries.size();
+            if (comma > start) names.push_back(cpu_libraries.substr(start, comma - start));
+            start = comma + 1;
+        }
+        const std::string loaded = arcana::load_cpu_library(".", names);
+        printf("-- CPU library: %s\n", loaded.empty() ? "none could be loaded" : loaded.c_str());
+        if (loaded.empty()) return 1;
+    } else {
+        ggml_backend_load_all();
+    }
     llama_backend_init();
     auto t_load = clock_type::now();
     arcana::Session *s = arcana::Session::load(argv[1], 4096, threads, batch_threads > 0 ? batch_threads : threads);

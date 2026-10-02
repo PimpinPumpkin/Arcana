@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Process
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -38,11 +39,18 @@ class LlamaEngine @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + worker)
 
     private var started = false
+    private var cpuLibrary: String? = null
     private var handle = 0L
     private var loaded: File? = null
 
     /** False on a phone the native library was not built for (a 32-bit system, an x86 emulator). */
     val supported: Boolean = Process.is64Bit() && Build.SUPPORTED_64_BIT_ABIS.contains("arm64-v8a")
+
+    /**
+     * The processor-specific libraries this phone may use, best first (see [CpuLibraries]). The
+     * first is the one a reading runs on; About names it, which is what to ask for in a bug report.
+     */
+    val cpuLibraries: List<String> by lazy { if (supported) CpuLibraries.pick() else emptyList() }
 
     init {
         context.registerComponentCallbacks(object : ComponentCallbacks2 {
@@ -66,9 +74,11 @@ class LlamaEngine @Inject constructor(
         withContext(worker) {
             if (!supported) throw IOException("The on-device model needs a 64-bit ARM phone.")
             if (!started) {
-                LlamaBridge.nativeInit(context.applicationInfo.nativeLibraryDir)
+                cpuLibrary = LlamaBridge.nativeInit(context.applicationInfo.nativeLibraryDir, cpuLibraries.toTypedArray())
+                Log.i(TAG, "CPU library: $cpuLibrary")
                 started = true
             }
+            if (cpuLibrary == null) throw IOException("The reading engine could not start on this phone's processor.")
             if (handle == 0L || loaded != file) {
                 free()
                 val (threads, batchThreads) = Threads.pick()
@@ -143,6 +153,8 @@ class LlamaEngine @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "ArcanaLlama"
+
         // A twelve-card spread fits with room to spare. One much larger than that is carried on
         // in a fresh conversation partway through (see LocalLlmInterpreter).
         const val CONTEXT_TOKENS = 4096
